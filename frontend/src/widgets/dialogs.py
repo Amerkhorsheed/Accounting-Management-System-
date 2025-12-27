@@ -79,6 +79,35 @@ class MessageDialog:
         msg.setWindowTitle(title)
         msg.setText(message)
         msg.exec()
+    
+    @staticmethod
+    def info(parent, title: str, message: str):
+        """Show information message."""
+        msg = QMessageBox(parent)
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle(title)
+        msg.setText(message)
+        msg.exec()
+        
+    @staticmethod
+    def warning(parent, title: str, message: str):
+        """Show warning message."""
+        msg = QMessageBox(parent)
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle(title)
+        msg.setText(message)
+        msg.exec()
+    
+    @staticmethod
+    def confirm(parent, title: str, message: str) -> bool:
+        """Show confirmation dialog and return True if user confirms."""
+        msg = QMessageBox(parent)
+        msg.setIcon(QMessageBox.Question)
+        msg.setWindowTitle(title)
+        msg.setText(message)
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.No)
+        return msg.exec() == QMessageBox.Yes
         
     @staticmethod
     def error(parent, title: str, message: str, details: str = None):

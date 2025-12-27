@@ -225,8 +225,14 @@ class ApiService:
         """
         field_errors = {}
         
-        # Skip known non-field keys
-        non_field_keys = {'detail', 'code', 'error_code', 'message', 'non_field_errors'}
+        # Skip known non-field keys (including business exception metadata)
+        non_field_keys = {
+            'detail', 'code', 'error_code', 'message', 'non_field_errors',
+            # InsufficientStockException metadata
+            'product_name', 'requested', 'available',
+            # Other business exception metadata
+            'model', 'identifier', 'reason', 'operation',
+        }
         
         for key, value in error_data.items():
             if key in non_field_keys:

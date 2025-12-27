@@ -174,6 +174,7 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     
     items = InvoiceItemCreateSerializer(many=True)
     # Non-model fields for atomic invoice creation and confirmation
+    # Declared at class level with write_only=True, NOT in Meta.fields
     confirm = serializers.BooleanField(write_only=True, required=False, default=False)
     paid_amount = serializers.DecimalField(max_digits=15, decimal_places=2, write_only=True, required=False, allow_null=True)
     payment_method = serializers.CharField(max_length=20, write_only=True, required=False, allow_null=True, allow_blank=True)
@@ -185,8 +186,17 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             'invoice_date', 'due_date',
             'discount_percent', 'discount_amount',
             'notes', 'internal_notes', 'items',
-            'confirm', 'paid_amount', 'payment_method'
+            # Non-model fields must be listed here too for DRF to include them
+            'confirm', 'paid_amount', 'payment_method',
         ]
+        # Tell DRF these are not model fields
+        extra_kwargs = {
+            'due_date': {'required': False, 'allow_null': True},
+            'discount_percent': {'required': False},
+            'discount_amount': {'required': False},
+            'notes': {'required': False, 'allow_blank': True},
+            'internal_notes': {'required': False, 'allow_blank': True},
+        }
 
     def validate_items(self, value):
         """Validate that at least one item is provided."""

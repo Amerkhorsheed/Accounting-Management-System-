@@ -1889,3 +1889,135 @@ Traceback (most recent call last):
   File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
     raise ApiException(
 src.services.api.ApiException: product_name: ke
+[2025-12-24 20:53:51] ERROR [frontend:959] error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] product_name: ke
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+---
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 885, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 350, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: product_name: ke
+[2025-12-24 20:58:12] ERROR [frontend:959] error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم العثور على حساب نشط للبيانات المقدمة
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+---
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 885, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم العثور على حساب نشط للبيانات المقدمة
+[2025-12-24 21:06:44] ERROR [frontend:1015] error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] خطأ في البيانات المدخلة: الكمية المتاحة من 'ke' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+---
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: الكمية المتاحة من 'ke' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+[2025-12-24 21:22:22] ERROR [frontend:1015] error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] العنصر المطلوب غير موجود: المنتج غير موجود
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 404
+  Traceback: (see below)
+---
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العنصر المطلوب غير موجود: المنتج غير موجود
+[2025-12-24 21:22:28] ERROR [frontend:1015] error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] العنصر المطلوب غير موجود: المنتج غير موجود
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 404
+  Traceback: (see below)
+---
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العنصر المطلوب غير موجود: المنتج غير موجود
+[2025-12-24 21:22:35] ERROR [frontend:1015] error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] العنصر المطلوب غير موجود: المنتج غير موجود
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 404
+  Traceback: (see below)
+---
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العنصر المطلوب غير موجود: المنتج غير موجود

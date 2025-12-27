@@ -763,6 +763,7 @@ def handle_ui_error(func: Callable) -> Callable:
     without crashing the application. Shows different dialogs based on error type:
     - Validation errors: Shows field-specific errors
     - Business errors: Shows business rule violation details
+    - Authentication errors (401): Shows re-login dialog
     - Other errors: Shows generic error dialog
     
     Requirement 6.3: THE Frontend SHALL provide a decorator for wrapping API calls with try-catch
@@ -821,6 +822,12 @@ def handle_ui_error(func: Callable) -> Callable:
             # Determine parent widget for dialog
             parent = self if isinstance(self, QWidget) else None
             
+            # Check for authentication errors (401) - show re-login dialog
+            status_code = getattr(e, 'status_code', None)
+            if status_code == 401:
+                _handle_auth_error(parent)
+                return None
+            
             # Handle different error types appropriately
             # Requirement 5.1, 5.2, 5.3, 5.4: Show appropriate error dialogs
             error_code = getattr(e, 'error_code', None) or getattr(e, 'code', None)
@@ -853,6 +860,55 @@ def handle_ui_error(func: Callable) -> Callable:
             return None
     
     return wrapper
+
+
+def _handle_auth_error(parent: QWidget = None):
+    """
+    Handle authentication errors by showing a re-login dialog.
+    
+    Instead of closing the app, prompts the user to re-login.
+    """
+    from PySide6.QtWidgets import QMessageBox
+    
+    reply = QMessageBox.warning(
+        parent,
+        "انتهت الجلسة",
+        "انتهت صلاحية جلستك. هل تريد تسجيل الدخول مرة أخرى؟",
+        QMessageBox.Yes | QMessageBox.No,
+        QMessageBox.Yes
+    )
+    
+    if reply == QMessageBox.Yes:
+        # Try to show login dialog
+        try:
+            from ..views.login import LoginDialog
+            from ..services.api import api
+            
+            # Clear old tokens
+            api.clear_tokens()
+            
+            # Show login dialog
+            login_dialog = LoginDialog(parent)
+            if login_dialog.exec():
+                # Login successful - user can retry their action
+                QMessageBox.information(
+                    parent,
+                    "نجاح",
+                    "تم تسجيل الدخول بنجاح. يرجى إعادة المحاولة."
+                )
+            else:
+                QMessageBox.warning(
+                    parent,
+                    "تنبيه",
+                    "لم يتم تسجيل الدخول. بعض الوظائف قد لا تعمل."
+                )
+        except Exception as login_error:
+            logger.error(f"Failed to show re-login dialog: {login_error}")
+            QMessageBox.critical(
+                parent,
+                "خطأ",
+                "فشل في إعادة تسجيل الدخول. يرجى إعادة تشغيل التطبيق."
+            )
 
 
 def handle_api_error(func: Callable) -> Callable:
