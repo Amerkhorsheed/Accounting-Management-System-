@@ -1,0 +1,631 @@
+"""
+API Service - HTTP Client for Backend Communication
+
+This module provides the HTTP client for communicating with the Django backend.
+All API methods are wrapped with @handle_api_error decorator for consistent
+error handling and conversion of network errors to typed exceptions.
+
+Requirements: 3.1, 3.2, 5.1, 5.2
+"""
+import logging
+import requests
+from typing import Optional, Dict, List, Any, Tuple
+from ..config import config
+from ..utils.error_handler import handle_api_error
+from ..utils.exceptions import ConnectionException, TimeoutException
+
+# Configure logger for API service
+logger = logging.getLogger(__name__)
+
+
+class ApiException(Exception):
+    """
+    API exception class with enhanced error details.
+    
+    Attributes:
+        message: Human-readable error message
+        status_code: HTTP status code (if available)
+        error_code: Machine-readable error code from backend
+        field_errors: Dictionary of field-specific validation errors
+        detail: Additional error details
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        status_code: int = None,
+        error_code: str = None,
+        field_errors: Dict[str, List[str]] = None,
+        detail: str = None
+    ):
+        self.message = message
+        self.status_code = status_code
+        self.error_code = error_code or 'API_ERROR'
+        self.field_errors = field_errors or {}
+        self.detail = detail
+        super().__init__(self.message)
+    
+    def __str__(self) -> str:
+        return self.message
+    
+    def get_field_error(self, field: str) -> Optional[str]:
+        """Get error message for a specific field."""
+        errors = self.field_errors.get(field, [])
+        return errors[0] if errors else None
+    
+    def has_field_errors(self) -> bool:
+        """Check if there are field-specific errors."""
+        return bool(self.field_errors)
+
+
+class ApiService:
+    """
+    HTTP client for communicating with the Django backend.
+    Implements singleton pattern.
+    """
+    
+    _instance = None
+    _access_token: Optional[str] = None
+    _refresh_token: Optional[str] = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        self.base_url = config.API_BASE_URL
+        self.timeout = config.API_TIMEOUT
+        
+    def set_tokens(self, access: str, refresh: str):
+        """Set authentication tokens."""
+        self._access_token = access
+        self._refresh_token = refresh
+        
+    def clear_tokens(self):
+        """Clear authentication tokens."""
+        self._access_token = None
+        self._refresh_token = None
+        
+    def _headers(self) -> Dict[str, str]:
+        """Get request headers."""
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        }
+        if self._access_token:
+            headers['Authorization'] = f'Bearer {self._access_token}'
+        return headers
+        
+    def _request(self, method: str, endpoint: str, **kwargs) -> Dict:
+        """
+        Make HTTP request with comprehensive error handling.
+        
+        Converts network errors to typed exceptions and parses error responses
+        to extract field-specific validation errors and business rule violations.
+        
+        Requirements: 3.1, 3.2, 5.1, 5.2
+        """
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        
+        try:
+            response = requests.request(
+                method,
+                url,
+                headers=self._headers(),
+                timeout=self.timeout,
+                **kwargs
+            )
+            
+            # Handle token refresh
+            if response.status_code == 401 and self._refresh_token:
+                if self._refresh_access_token():
+                    response = requests.request(
+                        method,
+                        url,
+                        headers=self._headers(),
+                        timeout=self.timeout,
+                        **kwargs
+                    )
+            
+            # Check for errors and parse response
+            if not response.ok:
+                self._handle_error_response(response)
+            
+            return response.json() if response.content else {}
+            
+        except requests.exceptions.Timeout as e:
+            logger.exception(f"Request timeout for {method} {endpoint}")
+            raise TimeoutException("انتهت مهلة الاتصال بالخادم. يرجى المحاولة مرة أخرى.")
+            
+        except requests.exceptions.ConnectionError as e:
+            logger.exception(f"Connection error for {method} {endpoint}")
+            raise ConnectionException("فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.")
+            
+        except requests.exceptions.RequestException as e:
+            logger.exception(f"Request error for {method} {endpoint}")
+            raise ConnectionException(f"فشل في الاتصال بالخادم: {str(e)}")
+    
+    def _handle_error_response(self, response: requests.Response) -> None:
+        """
+        Parse error response and raise appropriate ApiException.
+        
+        Extracts field-specific validation errors and business rule violation
+        details from the response body.
+        
+        Requirements: 5.1, 5.2
+        """
+        status_code = response.status_code
+        error_code = None
+        field_errors = {}
+        detail = None
+        user_message = self._get_status_message(status_code)
+        
+        try:
+            error_data = response.json()
+            
+            if isinstance(error_data, dict):
+                # Extract error code if present
+                error_code = error_data.get('code', error_data.get('error_code'))
+                
+                # Extract detail message
+                detail = error_data.get('detail', error_data.get('message'))
+                
+                # Parse field-specific validation errors
+                field_errors = self._extract_field_errors(error_data)
+                
+                # Build user-friendly message
+                if field_errors:
+                    # Format field errors for display
+                    error_parts = []
+                    for field, messages in field_errors.items():
+                        field_name = self._translate_field_name(field)
+                        error_parts.append(f"{field_name}: {', '.join(messages)}")
+                    user_message = '\n'.join(error_parts)
+                elif detail:
+                    user_message = f"{user_message}: {detail}"
+                    
+            elif isinstance(error_data, str):
+                detail = error_data
+                user_message = f"{user_message}: {error_data}"
+                
+        except Exception:
+            # If JSON parsing fails, use response text
+            detail = response.text[:200] if response.text else response.reason
+            if detail:
+                user_message = f"{user_message}: {detail}"
+        
+        logger.warning(
+            f"API error response: {status_code}",
+            extra={
+                'status_code': status_code,
+                'error_code': error_code,
+                'detail': detail,
+                'field_errors': field_errors,
+            }
+        )
+        
+        raise ApiException(
+            message=user_message,
+            status_code=status_code,
+            error_code=error_code,
+            field_errors=field_errors,
+            detail=detail
+        )
+    
+    def _extract_field_errors(self, error_data: Dict) -> Dict[str, List[str]]:
+        """
+        Extract field-specific validation errors from DRF error response.
+        
+        DRF returns validation errors in format:
+        {"field_name": ["error1", "error2"], "other_field": ["error"]}
+        
+        Requirement 5.1: WHEN a validation error occurs THEN the Error_Handler 
+        SHALL display which field has the error and why
+        """
+        field_errors = {}
+        
+        # Skip known non-field keys
+        non_field_keys = {'detail', 'code', 'error_code', 'message', 'non_field_errors'}
+        
+        for key, value in error_data.items():
+            if key in non_field_keys:
+                # Handle non_field_errors specially
+                if key == 'non_field_errors' and isinstance(value, list):
+                    field_errors['general'] = [str(v) for v in value]
+                continue
+                
+            # Convert value to list of strings
+            if isinstance(value, list):
+                field_errors[key] = [str(v) for v in value]
+            elif isinstance(value, str):
+                field_errors[key] = [value]
+            elif isinstance(value, dict):
+                # Nested errors (e.g., for nested serializers)
+                nested_errors = self._extract_field_errors(value)
+                for nested_key, nested_value in nested_errors.items():
+                    field_errors[f"{key}.{nested_key}"] = nested_value
+        
+        return field_errors
+    
+    def _translate_field_name(self, field: str) -> str:
+        """
+        Translate field names to Arabic for user display.
+        
+        Requirement 5.1: Display which field has the error
+        """
+        translations = {
+            'name': 'الاسم',
+            'code': 'الكود',
+            'barcode': 'الباركود',
+            'price': 'السعر',
+            'cost_price': 'سعر التكلفة',
+            'sale_price': 'سعر البيع',
+            'quantity': 'الكمية',
+            'stock': 'المخزون',
+            'stock_quantity': 'كمية المخزون',
+            'min_stock': 'الحد الأدنى للمخزون',
+            'description': 'الوصف',
+            'category': 'الفئة',
+            'supplier': 'المورد',
+            'customer': 'العميل',
+            'phone': 'الهاتف',
+            'email': 'البريد الإلكتروني',
+            'address': 'العنوان',
+            'date': 'التاريخ',
+            'due_date': 'تاريخ الاستحقاق',
+            'amount': 'المبلغ',
+            'total': 'الإجمالي',
+            'subtotal': 'المجموع الفرعي',
+            'discount': 'الخصم',
+            'tax': 'الضريبة',
+            'notes': 'الملاحظات',
+            'status': 'الحالة',
+            'items': 'العناصر',
+            'product': 'المنتج',
+            'unit': 'الوحدة',
+            'username': 'اسم المستخدم',
+            'password': 'كلمة المرور',
+            'general': 'خطأ عام',
+            'non_field_errors': 'خطأ عام',
+            'detail': 'التفاصيل',
+        }
+        return translations.get(field, field)
+    
+    def _get_status_message(self, status_code: int) -> str:
+        """
+        Get user-friendly message for HTTP status code.
+        
+        Requirement 5.2: WHEN a business rule violation occurs THEN the Error_Handler 
+        SHALL explain the rule that was violated
+        """
+        messages = {
+            400: 'خطأ في البيانات المدخلة',
+            401: 'يرجى تسجيل الدخول مرة أخرى',
+            403: 'ليس لديك صلاحية لهذه العملية',
+            404: 'العنصر المطلوب غير موجود',
+            409: 'تعارض في البيانات',
+            422: 'خطأ في التحقق من البيانات',
+            500: 'خطأ في الخادم',
+            502: 'خطأ في الاتصال بالخادم',
+            503: 'الخادم غير متاح حالياً',
+        }
+        return messages.get(status_code, 'حدث خطأ غير متوقع')
+            
+    def _refresh_access_token(self) -> bool:
+        """Refresh the access token."""
+        try:
+            response = requests.post(
+                f"{self.base_url}/auth/token/refresh/",
+                json={'refresh': self._refresh_token},
+                timeout=self.timeout
+            )
+            if response.status_code == 200:
+                data = response.json()
+                self._access_token = data.get('access')
+                return True
+        except:
+            pass
+        return False
+    
+    # Generic CRUD methods with error handling
+    @handle_api_error
+    def get(self, endpoint: str, params: Dict = None) -> Dict:
+        """
+        GET request with error handling.
+        
+        Converts network errors to typed exceptions.
+        Requirements: 3.1, 3.2
+        """
+        return self._request('GET', endpoint, params=params)
+    
+    @handle_api_error
+    def post(self, endpoint: str, data: Dict) -> Dict:
+        """
+        POST request with error handling.
+        
+        Converts network errors to typed exceptions.
+        Requirements: 3.1, 3.2
+        """
+        return self._request('POST', endpoint, json=data)
+    
+    @handle_api_error
+    def put(self, endpoint: str, data: Dict) -> Dict:
+        """
+        PUT request with error handling.
+        
+        Converts network errors to typed exceptions.
+        Requirements: 3.1, 3.2
+        """
+        return self._request('PUT', endpoint, json=data)
+    
+    @handle_api_error
+    def patch(self, endpoint: str, data: Dict) -> Dict:
+        """
+        PATCH request with error handling.
+        
+        Converts network errors to typed exceptions.
+        Requirements: 3.1, 3.2
+        """
+        return self._request('PATCH', endpoint, json=data)
+    
+    @handle_api_error
+    def delete(self, endpoint: str) -> Dict:
+        """
+        DELETE request with error handling.
+        
+        Converts network errors to typed exceptions.
+        Requirements: 3.1, 3.2
+        """
+        return self._request('DELETE', endpoint)
+    
+    # Auth endpoints
+    def login(self, username: str, password: str) -> Dict:
+        """Login and get tokens."""
+        response = self.post('auth/token/', {
+            'username': username,
+            'password': password
+        })
+        if 'access' in response:
+            self.set_tokens(response['access'], response.get('refresh', ''))
+        return response
+        
+    def logout(self):
+        """Logout and clear tokens."""
+        self.clear_tokens()
+        
+    def get_current_user(self) -> Dict:
+        """Get current user info."""
+        return self.get('auth/users/me/')
+    
+    # Products endpoints
+    def get_products(self, params: Dict = None) -> Dict:
+        return self.get('inventory/products/', params)
+        
+    def get_product(self, id: int) -> Dict:
+        return self.get(f'inventory/products/{id}/')
+        
+    def get_product_by_barcode(self, barcode: str) -> Dict:
+        return self.get('inventory/products/by_barcode/', {'barcode': barcode})
+        
+    def create_product(self, data: Dict) -> Dict:
+        return self.post('inventory/products/', data)
+        
+    def update_product(self, id: int, data: Dict) -> Dict:
+        return self.patch(f'inventory/products/{id}/', data)
+        
+    def delete_product(self, id: int) -> Dict:
+        return self.delete(f'inventory/products/{id}/')
+    
+    # Categories endpoints
+    def get_categories(self) -> List[Dict]:
+        return self.get('inventory/categories/')
+        
+    def get_category_tree(self) -> List[Dict]:
+        return self.get('inventory/categories/tree/')
+    
+    # Warehouses endpoints
+    def get_warehouses(self, params: Dict = None) -> List[Dict]:
+        return self.get('inventory/warehouses/', params)
+    
+    def get_default_warehouse(self) -> Dict:
+        """Get the default warehouse."""
+        warehouses = self.get('inventory/warehouses/', {'is_default': True})
+        if isinstance(warehouses, dict) and 'results' in warehouses:
+            warehouses = warehouses['results']
+        if warehouses and len(warehouses) > 0:
+            return warehouses[0]
+        # Fallback: get first warehouse if no default
+        all_warehouses = self.get('inventory/warehouses/')
+        if isinstance(all_warehouses, dict) and 'results' in all_warehouses:
+            all_warehouses = all_warehouses['results']
+        if all_warehouses and len(all_warehouses) > 0:
+            return all_warehouses[0]
+        return None
+    
+    # Customers endpoints
+    def get_customers(self, params: Dict = None) -> Dict:
+        return self.get('sales/customers/', params)
+        
+    def get_customer(self, id: int) -> Dict:
+        return self.get(f'sales/customers/{id}/')
+        
+    def create_customer(self, data: Dict) -> Dict:
+        return self.post('sales/customers/', data)
+        
+    def update_customer(self, id: int, data: Dict) -> Dict:
+        return self.patch(f'sales/customers/{id}/', data)
+        
+    def get_customer_statement(self, id: int, start_date: str = None, end_date: str = None) -> Dict:
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        return self.get(f'sales/customers/{id}/statement/', params)
+    
+    # Payment Collection endpoints (Credit Sales)
+    def get_customer_unpaid_invoices(self, customer_id: int) -> List[Dict]:
+        """
+        Get list of unpaid/partial invoices for a customer.
+        
+        Returns list of invoices with id, number, date, total, paid, remaining.
+        Requirements: 2.1, 7.1
+        """
+        return self.get('sales/payments/customer_unpaid_invoices/', {'customer_id': customer_id})
+    
+    def collect_payment_with_allocation(self, data: Dict) -> Dict:
+        """
+        Create payment with invoice allocations in one transaction.
+        
+        Args:
+            data: Dictionary containing:
+                - customer: Customer ID
+                - payment_date: Date of payment (YYYY-MM-DD)
+                - amount: Payment amount (Decimal)
+                - payment_method: Payment method (cash, card, bank, check, credit)
+                - reference: Optional reference number
+                - notes: Optional notes
+                - allocations: Optional list of {invoice_id, amount} objects
+                - auto_allocate: Boolean - if true, uses FIFO strategy
+                
+        Returns:
+            Created payment with allocations
+            
+        Requirements: 2.1, 7.1
+        """
+        return self.post('sales/payments/collect_with_allocation/', data)
+    
+    # Invoices endpoints
+    def get_invoices(self, params: Dict = None) -> Dict:
+        return self.get('sales/invoices/', params)
+        
+    def get_invoice(self, id: int) -> Dict:
+        return self.get(f'sales/invoices/{id}/')
+        
+    def create_invoice(self, data: Dict) -> Dict:
+        return self.post('sales/invoices/', data)
+        
+    def confirm_invoice(self, id: int) -> Dict:
+        return self.post(f'sales/invoices/{id}/confirm/', {})
+        
+    def get_invoice_profit(self, id: int) -> Dict:
+        return self.get(f'sales/invoices/{id}/profit/')
+    
+    # Suppliers endpoints
+    def get_suppliers(self, params: Dict = None) -> Dict:
+        return self.get('purchases/suppliers/', params)
+        
+    def create_supplier(self, data: Dict) -> Dict:
+        return self.post('purchases/suppliers/', data)
+    
+    # Purchase Orders endpoints
+    def get_purchase_orders(self, params: Dict = None) -> Dict:
+        return self.get('purchases/orders/', params)
+        
+    def create_purchase_order(self, data: Dict) -> Dict:
+        return self.post('purchases/orders/', data)
+        
+    def approve_purchase_order(self, id: int) -> Dict:
+        return self.post(f'purchases/orders/{id}/approve/', {})
+        
+    def receive_goods(self, id: int, data: Dict) -> Dict:
+        return self.post(f'purchases/orders/{id}/receive/', data)
+    
+    # Expenses endpoints
+    def get_expenses(self, params: Dict = None) -> Dict:
+        return self.get('expenses/expenses/', params)
+        
+    def create_expense(self, data: Dict) -> Dict:
+        return self.post('expenses/expenses/', data)
+        
+    def get_expense_categories(self) -> List[Dict]:
+        return self.get('expenses/categories/')
+    
+    # Reports endpoints
+    def get_dashboard(self, start_date: str = None, end_date: str = None) -> Dict:
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        return self.get('reports/dashboard/', params)
+        
+    def get_sales_report(self, start_date: str, end_date: str, group_by: str = 'day') -> Dict:
+        return self.get('reports/sales/', {
+            'start_date': start_date,
+            'end_date': end_date,
+            'group_by': group_by
+        })
+        
+    def get_profit_report(self, start_date: str, end_date: str) -> Dict:
+        return self.get('reports/profit/', {
+            'start_date': start_date,
+            'end_date': end_date
+        })
+        
+    def get_inventory_report(self) -> Dict:
+        return self.get('reports/inventory/')
+        
+    def get_customer_report(self, start_date: str = None, end_date: str = None) -> Dict:
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        return self.get('reports/customers/', params)
+    
+    def get_receivables_report(
+        self,
+        customer_type: str = None,
+        salesperson_id: int = None,
+        start_date: str = None,
+        end_date: str = None
+    ) -> Dict:
+        """
+        Get receivables report with customer balances.
+        
+        Args:
+            customer_type: Optional filter by customer type
+            salesperson_id: Optional filter by salesperson
+            start_date: Optional filter start date
+            end_date: Optional filter end date
+            
+        Returns:
+            Report with total_outstanding, customers list sorted by balance,
+            and counts of unpaid/partial invoices per customer.
+            
+        Requirements: 4.1-4.5
+        """
+        params = {}
+        if customer_type:
+            params['customer_type'] = customer_type
+        if salesperson_id:
+            params['salesperson'] = salesperson_id
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        return self.get('reports/receivables/', params)
+    
+    def get_aging_report(self, as_of_date: str = None) -> Dict:
+        """
+        Get aging report categorized by overdue periods.
+        
+        Args:
+            as_of_date: Optional date to calculate aging from (defaults to today)
+            
+        Returns:
+            Report with aging buckets (current, 1-30, 31-60, 61-90, >90 days),
+            totals per category, and invoice details.
+            
+        Requirements: 5.1-5.5
+        """
+        params = {}
+        if as_of_date:
+            params['as_of_date'] = as_of_date
+        return self.get('reports/aging/', params)
+
+
+# Global API instance
+api = ApiService()
