@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\admin.py
+# hypothesis_version: 6.148.8
+
+['-created_at', 'address', 'barcode', 'category', 'code', 'conversion_factor', 'cost_price', 'created_at', 'created_by', 'description', 'is_active', 'is_base_unit', 'is_default', 'is_taxable', 'manager', 'movement_type', 'name', 'name_en', 'notes', 'parent', 'product', 'product__code', 'product__name', 'product_type', 'quantity', 'reference_number', 'reserved_quantity', 'sale_price', 'sort_order', 'source_type', 'symbol', 'unit', 'unit__name', 'updated_at', 'warehouse']

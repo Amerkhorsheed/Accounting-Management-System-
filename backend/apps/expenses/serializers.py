@@ -8,10 +8,21 @@ from .models import ExpenseCategory, Expense
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     """Serializer for ExpenseCategory."""
     
+    expenses_count = serializers.SerializerMethodField()
+    children_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = ExpenseCategory
-        fields = ['id', 'name', 'parent', 'description', 'is_active']
-        read_only_fields = ['id']
+        fields = ['id', 'name', 'parent', 'description', 'is_active', 'expenses_count', 'children_count']
+        read_only_fields = ['id', 'expenses_count', 'children_count']
+    
+    def get_expenses_count(self, obj):
+        """Get count of expenses in this category."""
+        return obj.expenses.filter(is_deleted=False).count()
+    
+    def get_children_count(self, obj):
+        """Get count of child categories."""
+        return obj.children.filter(is_deleted=False, is_active=True).count()
 
 
 class ExpenseSerializer(serializers.ModelSerializer):

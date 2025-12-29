@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\expenses\serializers.py
+# hypothesis_version: 6.148.8
+
+['amount', 'approved_by', 'approved_by_name', 'attachment', 'category', 'category.name', 'category_name', 'created_at', 'created_by', 'created_by.full_name', 'created_by_name', 'description', 'expense_date', 'expense_number', 'id', 'is_active', 'is_approved', 'name', 'notes', 'parent', 'payee', 'payment_method', 'reference', 'tax_amount', 'total_amount']

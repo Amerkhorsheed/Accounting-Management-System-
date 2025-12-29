@@ -542,75 +542,117 @@ class SalesService:
         start_date=None,
         end_date=None
     ) -> Dict[str, Any]:
-        """Get customer account statement."""
+        """
+        Get customer account statement with correct opening balance calculation.
+        
+        Requirements: 6.1, 6.2, 6.3, 6.4
+        
+        When a date range filter is applied:
+        - Opening balance = customer.opening_balance + all transactions before start_date
+        - Closing balance = opening_balance + total_debit - total_credit
+        - Running balance is calculated correctly from the opening balance
+        
+        Args:
+            customer_id: The customer's ID
+            start_date: Optional start date for filtering (inclusive)
+            end_date: Optional end date for filtering (inclusive)
+            
+        Returns:
+            Dict with customer info, opening_balance, closing_balance, totals, and transactions
+        """
         
         customer = Customer.objects.get(id=customer_id)
         
-        # Get invoices
-        invoices = Invoice.objects.filter(
+        # Get ALL invoices (for opening balance calculation)
+        all_invoices = Invoice.objects.filter(
             customer_id=customer_id,
             status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL]
-        )
+        ).order_by('invoice_date', 'id')
         
-        # Get payments
-        payments = Payment.objects.filter(customer_id=customer_id)
+        # Get ALL payments (for opening balance calculation)
+        all_payments = Payment.objects.filter(customer_id=customer_id).order_by('payment_date', 'id')
         
-        # Get returns
-        returns = SalesReturn.objects.filter(
+        # Get ALL returns (for opening balance calculation)
+        all_returns = SalesReturn.objects.filter(
             original_invoice__customer_id=customer_id
-        )
+        ).order_by('return_date', 'id')
         
-        if start_date:
-            invoices = invoices.filter(invoice_date__gte=start_date)
-            payments = payments.filter(payment_date__gte=start_date)
-            returns = returns.filter(return_date__gte=start_date)
+        # Build complete transactions list
+        all_transactions = []
         
-        if end_date:
-            invoices = invoices.filter(invoice_date__lte=end_date)
-            payments = payments.filter(payment_date__lte=end_date)
-            returns = returns.filter(return_date__lte=end_date)
-        
-        # Build transactions list
-        transactions = []
-        
-        for inv in invoices:
-            transactions.append({
+        for inv in all_invoices:
+            all_transactions.append({
                 'date': inv.invoice_date,
                 'type': 'invoice',
                 'reference': inv.invoice_number,
                 'debit': inv.total_amount,
                 'credit': Decimal('0.00'),
-                'description': f'فاتورة رقم {inv.invoice_number}'
+                'description': f'فاتورة رقم {inv.invoice_number}',
+                'sort_key': (inv.invoice_date, 0, inv.id)  # invoices first within same date
             })
         
-        for payment in payments:
-            transactions.append({
+        for payment in all_payments:
+            all_transactions.append({
                 'date': payment.payment_date,
                 'type': 'payment',
                 'reference': payment.payment_number,
                 'debit': Decimal('0.00'),
                 'credit': payment.amount,
-                'description': f'سند قبض رقم {payment.payment_number}'
+                'description': f'سند قبض رقم {payment.payment_number}',
+                'sort_key': (payment.payment_date, 1, payment.id)  # payments after invoices
             })
         
-        for ret in returns:
-            transactions.append({
+        for ret in all_returns:
+            all_transactions.append({
                 'date': ret.return_date,
                 'type': 'return',
                 'reference': ret.return_number,
                 'debit': Decimal('0.00'),
                 'credit': ret.total_amount,
-                'description': f'مرتجع رقم {ret.return_number}'
+                'description': f'مرتجع رقم {ret.return_number}',
+                'sort_key': (ret.return_date, 2, ret.id)  # returns after payments
             })
         
-        # Sort by date
-        transactions.sort(key=lambda x: x['date'])
+        # Sort all transactions by date, then type priority, then id
+        all_transactions.sort(key=lambda x: x['sort_key'])
         
-        # Calculate running balance
-        balance = customer.opening_balance
-        for t in transactions:
-            balance = balance + t['debit'] - t['credit']
-            t['balance'] = balance
+        # Requirement 6.1, 6.2: Calculate opening balance
+        # Opening balance = customer.opening_balance + all transactions before start_date
+        opening_balance = customer.opening_balance
+        
+        if start_date:
+            # Add all transactions before start_date to opening balance
+            for txn in all_transactions:
+                if txn['date'] < start_date:
+                    opening_balance += txn['debit'] - txn['credit']
+        
+        # Filter transactions by date range for display
+        filtered_transactions = []
+        for txn in all_transactions:
+            include = True
+            if start_date and txn['date'] < start_date:
+                include = False
+            if end_date and txn['date'] > end_date:
+                include = False
+            if include:
+                # Remove sort_key before adding to result
+                filtered_txn = {k: v for k, v in txn.items() if k != 'sort_key'}
+                filtered_transactions.append(filtered_txn)
+        
+        # Calculate running balance for each transaction
+        # Requirement 6.4: Running balance starts from opening_balance
+        running_balance = opening_balance
+        total_debit = Decimal('0.00')
+        total_credit = Decimal('0.00')
+        
+        for t in filtered_transactions:
+            running_balance = running_balance + t['debit'] - t['credit']
+            t['balance'] = running_balance
+            total_debit += t['debit']
+            total_credit += t['credit']
+        
+        # Requirement 6.3: Closing balance = opening_balance + total_debit - total_credit
+        closing_balance = opening_balance + total_debit - total_credit
         
         return {
             'customer': {
@@ -618,12 +660,18 @@ class SalesService:
                 'name': customer.name,
                 'code': customer.code
             },
-            'opening_balance': customer.opening_balance,
-            'closing_balance': customer.current_balance,
-            'total_invoices': sum(t['debit'] for t in transactions),
-            'total_payments': sum(t['credit'] for t in transactions if t['type'] == 'payment'),
-            'total_returns': sum(t['credit'] for t in transactions if t['type'] == 'return'),
-            'transactions': transactions
+            'period': {
+                'start': start_date,
+                'end': end_date
+            },
+            'opening_balance': opening_balance,
+            'closing_balance': closing_balance,
+            'total_debit': total_debit,
+            'total_credit': total_credit,
+            'total_invoices': sum(t['debit'] for t in filtered_transactions),
+            'total_payments': sum(t['credit'] for t in filtered_transactions if t['type'] == 'payment'),
+            'total_returns': sum(t['credit'] for t in filtered_transactions if t['type'] == 'return'),
+            'transactions': filtered_transactions
         }
 
     @staticmethod
@@ -656,3 +704,102 @@ class SalesService:
                 for item in items
             ]
         }
+
+    @staticmethod
+    @handle_service_error
+    @transaction.atomic
+    def cancel_invoice(
+        invoice_id: int,
+        reason: str,
+        user=None
+    ) -> Invoice:
+        """
+        Cancel an invoice and reverse all effects.
+        
+        This method:
+        1. Validates invoice can be cancelled (must be confirmed, paid, or partial)
+        2. Reverses stock movements (adds stock back)
+        3. Reverses customer balance changes
+        4. Updates invoice status to cancelled
+        
+        Requirements: 4.4, 4.5
+        - Property 9: Invoice Cancellation Reversal
+        
+        Args:
+            invoice_id: Invoice to cancel
+            reason: Reason for cancellation
+            user: User performing cancellation
+            
+        Returns:
+            Updated Invoice
+            
+        Raises:
+            InvalidOperationException: If invoice cannot be cancelled
+            ValidationException: If reason is not provided
+        """
+        from apps.inventory.models import ProductUnit
+        
+        if not reason or not reason.strip():
+            raise ValidationException(
+                'يجب تحديد سبب الإلغاء',
+                field='reason'
+            )
+        
+        invoice = Invoice.objects.select_for_update().get(id=invoice_id)
+        
+        # Validate invoice status - can only cancel confirmed, paid, or partial invoices
+        allowed_statuses = [Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL]
+        if invoice.status not in allowed_statuses:
+            raise InvalidOperationException(
+                'إلغاء الفاتورة',
+                f'لا يمكن إلغاء فاتورة بحالة {invoice.get_status_display()}. يمكن إلغاء الفواتير المؤكدة أو المدفوعة فقط.'
+            )
+        
+        # Reverse stock movements - add stock back for all items
+        for item in invoice.items.all():
+            if item.product.track_stock:
+                # Calculate base_quantity based on product_unit or default to base unit
+                if item.product_unit:
+                    base_quantity = item.product_unit.convert_to_base(item.quantity)
+                else:
+                    base_unit = ProductUnit.objects.filter(
+                        product=item.product,
+                        is_base_unit=True,
+                        is_deleted=False
+                    ).first()
+                    
+                    if base_unit:
+                        base_quantity = base_unit.convert_to_base(item.quantity)
+                    else:
+                        base_quantity = item.quantity
+                
+                # Add stock back using InventoryService
+                InventoryService.add_stock(
+                    product_id=item.product_id,
+                    warehouse_id=invoice.warehouse_id,
+                    quantity=base_quantity,
+                    unit_cost=item.cost_price,
+                    source_type=StockMovement.SourceType.ADJUSTMENT,
+                    reference_number=invoice.invoice_number,
+                    reference_type='invoice_cancellation',
+                    reference_id=invoice.id,
+                    user=user,
+                    notes=f'إلغاء فاتورة رقم {invoice.invoice_number} - السبب: {reason}'
+                )
+        
+        # Reverse customer balance changes
+        # For credit invoices, the customer balance was increased by (total - paid)
+        # We need to decrease it by the same amount
+        if invoice.invoice_type == Invoice.InvoiceType.CREDIT:
+            customer = invoice.customer
+            # The unpaid portion was added to customer balance
+            unpaid_amount = invoice.total_amount - invoice.paid_amount
+            customer.current_balance -= unpaid_amount
+            customer.save()
+        
+        # Update invoice status to cancelled
+        invoice.status = Invoice.Status.CANCELLED
+        invoice.internal_notes = f"{invoice.internal_notes or ''}\n\nتم الإلغاء بواسطة: {user.full_name if user else 'النظام'}\nالسبب: {reason}".strip()
+        invoice.save(update_fields=['status', 'internal_notes'])
+        
+        return invoice

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\utils.py
+# hypothesis_version: 6.148.8
+
+[100, '0123456789', 'CURRENCY_SYMBOL', 'DECIMAL_PLACES', 'TAX_RATE', 'month', 'today', 'week', 'year', 'ر.س', '٠١٢٣٤٥٦٧٨٩']

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\reports\views.py
+# hypothesis_version: 6.148.8
+
+['%Y-%m-%d', 'as_of_date', 'customer_type', 'day', 'detail', 'end_date', 'group_by', 'salesperson_id', 'start_date']

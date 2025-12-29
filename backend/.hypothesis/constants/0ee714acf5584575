@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\apps.py
+# hypothesis_version: 6.148.8
+
+['apps.inventory', 'إدارة المخزون']

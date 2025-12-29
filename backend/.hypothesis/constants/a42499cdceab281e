@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\purchases\admin.py
+# hypothesis_version: 6.148.8
+
+['-order_date', '-payment_date', '-received_date', 'amount', 'code', 'current_balance', 'email', 'grn_number', 'is_active', 'name', 'order_date', 'order_number', 'payment_date', 'payment_method', 'payment_number', 'phone', 'purchase_order', 'received_by', 'received_date', 'status', 'subtotal', 'supplier', 'supplier__name', 'tax_amount', 'total', 'total_amount']

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\sales\migrations\0002_credit_sales_payments.py
+# hypothesis_version: 6.148.8
+
+['%(class)s_created', '%(class)s_deleted', '%(class)s_updated', '-created_at', '0001_initial', 'CreditLimitOverride', 'ID', 'PaymentAllocation', 'allocations', 'amount', 'approved_by', 'created_at', 'created_by', 'credit_overrides', 'customer', 'deleted_at', 'deleted_by', 'id', 'invoice', 'is_active', 'is_deleted', 'ordering', 'override_amount', 'payment', 'payment_allocations', 'reason', 'sales', 'sales.customer', 'sales.invoice', 'sales.payment', 'unique_together', 'updated_at', 'updated_by', 'verbose_name', 'verbose_name_plural', 'أنشئ بواسطة', 'العميل', 'الفاتورة', 'المبلغ المخصص', 'تاريخ الإنشاء', 'تاريخ التحديث', 'تاريخ الحذف', 'تجاوز حد الائتمان', 'تجاوزات حد الائتمان', 'تخصيص دفعة', 'تخصيصات الدفعات', 'تمت الموافقة بواسطة', 'حذف بواسطة', 'سبب التجاوز', 'سند القبض', 'عدّل بواسطة', 'مبلغ التجاوز', 'محذوف', 'نشط']

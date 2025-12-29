@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\purchases\views.py
+# hypothesis_version: 6.148.8
+
+['-grn_number', '-order_date', '-order_number', '-payment_date', '-payment_number', '-received_date', 'approved_by', 'code', 'create', 'created_at', 'created_by', 'current_balance', 'email', 'end_date', 'get', 'grn_number', 'is_active', 'items', 'list', 'mobile', 'name', 'name_en', 'notes', 'order_date', 'order_number', 'payment_method', 'payment_number', 'phone', 'post', 'purchase_order', 'received_by', 'received_date', 'reference', 'start_date', 'status', 'supplier', 'supplier__name', 'supplier_invoice_no', 'total_amount', 'warehouse']

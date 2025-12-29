@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\sales\views.py
+# hypothesis_version: 6.148.8
+
+['-invoice_date', '-invoice_number', '-payment_date', '-payment_number', '-return_date', '-return_number', 'DELETION_PROTECTED', 'allocations', 'amount', 'auto_allocate', 'cancelled', 'code', 'create', 'created_at', 'created_by', 'current_balance', 'customer', 'customer__code', 'customer__name', 'customer_id', 'customer_type', 'detail', 'email', 'end_date', 'get', 'invoice', 'invoice_date', 'invoice_number', 'invoice_type', 'is_active', 'items', 'list', 'mobile', 'name', 'name_en', 'notes', 'original_invoice', 'outstanding_count', 'paid_amount', 'payment_date', 'payment_method', 'payment_number', 'phone', 'post', 'reason', 'reference', 'return_date', 'return_number', 'salesperson', 'start_date', 'status', 'tax_number', 'total_amount', 'warehouse']

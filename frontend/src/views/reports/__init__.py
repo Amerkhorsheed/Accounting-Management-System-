@@ -24,6 +24,8 @@ from ...utils.error_handler import handle_ui_error
 from .receivables import ReceivablesReportView
 from .aging import AgingReportView
 from .customer_statement import CustomerStatementView
+from .suppliers import SuppliersReportView
+from .expenses import ExpensesReportView
 
 
 class ReportsView(QWidget):
@@ -64,6 +66,16 @@ class ReportsView(QWidget):
         self.statement_view = CustomerStatementView()
         self.statement_view.back_requested.connect(self.go_to_main)
         self.stack.addWidget(self.statement_view)
+        
+        # Suppliers report view
+        self.suppliers_view = SuppliersReportView()
+        self.suppliers_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.suppliers_view)
+        
+        # Expenses report view
+        self.expenses_view = ExpensesReportView()
+        self.expenses_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.expenses_view)
         
         main_layout.addWidget(self.stack)
     
@@ -263,6 +275,14 @@ class ReportsView(QWidget):
             self.statement_view.refresh()
             self.stack.setCurrentWidget(self.statement_view)
             return
+        elif report_type == 'suppliers':
+            self.suppliers_view.refresh()
+            self.stack.setCurrentWidget(self.suppliers_view)
+            return
+        elif report_type == 'expenses':
+            self.expenses_view.refresh()
+            self.stack.setCurrentWidget(self.expenses_view)
+            return
         
         # Handle existing reports with dialogs
         if report_type == 'sales':
@@ -302,6 +322,10 @@ class ReportsView(QWidget):
             self.aging_view.refresh()
         elif current == self.statement_view:
             self.statement_view.refresh()
+        elif current == self.suppliers_view:
+            self.suppliers_view.refresh()
+        elif current == self.expenses_view:
+            self.expenses_view.refresh()
     
     def go_to_receivables(self):
         """Navigate directly to receivables report (for dashboard click)."""
@@ -319,6 +343,16 @@ class ReportsView(QWidget):
         if customer:
             self.statement_view.set_customer(customer)
         self.stack.setCurrentWidget(self.statement_view)
+    
+    def go_to_suppliers(self):
+        """Navigate directly to suppliers report."""
+        self.suppliers_view.refresh()
+        self.stack.setCurrentWidget(self.suppliers_view)
+    
+    def go_to_expenses(self):
+        """Navigate directly to expenses report."""
+        self.expenses_view.refresh()
+        self.stack.setCurrentWidget(self.expenses_view)
     
     def go_to_main(self):
         """Navigate back to main reports grid."""

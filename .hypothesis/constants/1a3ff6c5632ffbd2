@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\services.py
+# hypothesis_version: 6.148.8
+
+['0', 'add', 'available', 'average', 'by_warehouse', 'category', 'current_stock', 'item_count', 'items', 'method', 'minimum_stock', 'product', 'product_code', 'product_id', 'product_name', 'quantity', 'reorder_point', 'reserved', 'set', 'subtract', 'total_available', 'total_quantity', 'total_reserved', 'total_value', 'unit', 'unit_cost', 'warehouse', 'warehouse_id', 'warehouse_name']

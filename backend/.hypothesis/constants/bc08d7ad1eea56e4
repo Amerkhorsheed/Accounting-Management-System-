@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\sales\services.py
+# hypothesis_version: 6.148.8
+
+[100, '0', '0.00', '0.01', 'SalesReturn', 'balance', 'base_quantity', 'cash', 'closing_balance', 'code', 'cost', 'credit', 'customer', 'date', 'debit', 'description', 'discount_percent', 'end', 'gross_profit', 'id', 'internal_notes', 'invoice', 'invoice_cancellation', 'invoice_date', 'invoice_item_id', 'invoice_number', 'items', 'name', 'notes', 'opening_balance', 'override_reason', 'paid_amount', 'payment', 'payment_date', 'period', 'product', 'product_id', 'product_unit_id', 'profit', 'profit_margin', 'quantity', 'reason', 'reference', 'return', 'return_date', 'revenue', 'sale', 'sort_key', 'start', 'status', 'tax_rate', 'total_available', 'total_cost', 'total_credit', 'total_debit', 'total_invoices', 'total_payments', 'total_returns', 'total_revenue', 'transactions', 'type', 'unit_price', 'إلغاء الفاتورة', 'إنشاء مرتجع']

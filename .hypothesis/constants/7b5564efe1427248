@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\accounts\urls.py
+# hypothesis_version: 6.148.8
+
+['audit-logs', 'token/', 'token/refresh/', 'token_obtain_pair', 'token_refresh', 'users']

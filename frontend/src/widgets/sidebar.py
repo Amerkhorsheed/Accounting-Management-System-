@@ -91,12 +91,16 @@ class Sidebar(QFrame):
         layout.addWidget(brand_area)
         
         # Navigation items
+        # Requirements: 20.1 - Add new views to sidebar navigation
         nav_items = [
             ('dashboard', 'لوحة التحكم', '📊'),
             ('pos', 'نقطة البيع', '💳'),
             ('invoices', 'الفواتير', '📄'),
+            ('sales_returns', 'مرتجعات المبيعات', '↩️'),
+            ('payments', 'المدفوعات', '💵'),
             ('customers', 'العملاء', '👥'),
             ('products', 'المنتجات', '📦'),
+            ('stock_movements', 'حركة المخزون', '📋'),
             ('purchases', 'المشتريات', '🛒'),
             ('suppliers', 'الموردون', '🏭'),
             ('expenses', 'المصروفات', '💸'),

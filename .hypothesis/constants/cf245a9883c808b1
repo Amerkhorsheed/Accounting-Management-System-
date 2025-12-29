@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\urls.py
+# hypothesis_version: 6.148.8
+
+['currencies', 'settings', 'taxes']

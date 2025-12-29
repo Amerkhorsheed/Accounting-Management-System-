@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\accounts\serializers.py
+# hypothesis_version: 6.148.8
+
+['__all__', 'action', 'action_display', 'avatar', 'changes', 'created_at', 'date_joined', 'email', 'first_name', 'full_name', 'get_action_display', 'id', 'ip_address', 'is_active', 'last_login', 'last_name', 'model_name', 'new_password', 'new_password_confirm', 'object_id', 'object_repr', 'password', 'password_confirm', 'phone', 'role', 'user', 'user.full_name', 'user_name', 'username']

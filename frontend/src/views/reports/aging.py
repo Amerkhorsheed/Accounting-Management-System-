@@ -7,6 +7,7 @@ overdue invoices categorized by age buckets.
 Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
 """
 from typing import List, Dict, Optional
+from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QGridLayout, QScrollArea,
@@ -20,6 +21,7 @@ from ...config import Colors, Fonts
 from ...widgets.cards import Card, StatCard
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
+from ...services.export import ExportService, ExportError
 from ...utils.error_handler import handle_ui_error
 
 
@@ -552,9 +554,144 @@ class AgingReportView(QWidget):
                 )
     
     def _export_excel(self):
-        """Export report to Excel (placeholder)."""
-        MessageDialog.info(self, "معلومات", "تصدير Excel قيد التطوير")
+        """
+        Export report to Excel.
+        
+        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
+        """
+        customer_breakdown = self.report_data.get('customer_breakdown', [])
+        
+        if not customer_breakdown:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
+            return
+        
+        try:
+            # Define columns for export
+            columns = [
+                ('customer_name', 'العميل'),
+                ('current', 'جاري'),
+                ('1_30', '1-30 يوم'),
+                ('31_60', '31-60 يوم'),
+                ('61_90', '61-90 يوم'),
+                ('over_90', '>90 يوم'),
+                ('total', 'الإجمالي')
+            ]
+            
+            # Prepare data
+            export_data = []
+            for customer in customer_breakdown:
+                export_data.append({
+                    'customer_name': customer.get('customer_name', ''),
+                    'current': float(customer.get('current', 0)),
+                    '1_30': float(customer.get('1_30', 0)),
+                    '31_60': float(customer.get('31_60', 0)),
+                    '61_90': float(customer.get('61_90', 0)),
+                    'over_90': float(customer.get('over_90', 0)),
+                    'total': float(customer.get('total', 0))
+                })
+            
+            # Generate filename with date
+            as_of_date = self.as_of_date.date().toString('yyyy-MM-dd')
+            filename = f"تقرير_أعمار_الديون_{as_of_date}.xlsx"
+            
+            # Prepare summary data
+            summary = self.report_data.get('summary', {})
+            buckets = self.aging_buckets
+            summary_data = {
+                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
+                'جاري (غير متأخر)': f"{float(buckets.get('current', {}).get('total', 0)):,.2f} ل.س",
+                '1-30 يوم': f"{float(buckets.get('1_30', {}).get('total', 0)):,.2f} ل.س",
+                '31-60 يوم': f"{float(buckets.get('31_60', {}).get('total', 0)):,.2f} ل.س",
+                '61-90 يوم': f"{float(buckets.get('61_90', {}).get('total', 0)):,.2f} ل.س",
+                'أكثر من 90 يوم': f"{float(buckets.get('over_90', {}).get('total', 0)):,.2f} ل.س"
+            }
+            
+            # Export to Excel
+            success = ExportService.export_to_excel(
+                data=export_data,
+                columns=columns,
+                filename=filename,
+                title="تقرير أعمار الديون",
+                parent=self,
+                summary=summary_data
+            )
+            
+            if success:
+                MessageDialog.info(self, "نجاح", "تم تصدير التقرير بنجاح")
+                
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل تصدير التقرير: {str(e)}")
     
     def _export_pdf(self):
-        """Export report to PDF (placeholder)."""
-        MessageDialog.info(self, "معلومات", "تصدير PDF قيد التطوير")
+        """
+        Export report to PDF.
+        
+        Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
+        """
+        customer_breakdown = self.report_data.get('customer_breakdown', [])
+        
+        if not customer_breakdown:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
+            return
+        
+        try:
+            # Define columns for export
+            columns = [
+                ('customer_name', 'العميل'),
+                ('current', 'جاري'),
+                ('1_30', '1-30 يوم'),
+                ('31_60', '31-60 يوم'),
+                ('61_90', '61-90 يوم'),
+                ('over_90', '>90 يوم'),
+                ('total', 'الإجمالي')
+            ]
+            
+            # Prepare data
+            export_data = []
+            for customer in customer_breakdown:
+                export_data.append({
+                    'customer_name': customer.get('customer_name', ''),
+                    'current': float(customer.get('current', 0)),
+                    '1_30': float(customer.get('1_30', 0)),
+                    '31_60': float(customer.get('31_60', 0)),
+                    '61_90': float(customer.get('61_90', 0)),
+                    'over_90': float(customer.get('over_90', 0)),
+                    'total': float(customer.get('total', 0))
+                })
+            
+            # Generate filename with date
+            as_of_date = self.as_of_date.date().toString('yyyy-MM-dd')
+            filename = f"تقرير_أعمار_الديون_{as_of_date}.pdf"
+            
+            # Prepare summary data
+            summary = self.report_data.get('summary', {})
+            buckets = self.aging_buckets
+            summary_data = {
+                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
+                'جاري (غير متأخر)': f"{float(buckets.get('current', {}).get('total', 0)):,.2f} ل.س",
+                '1-30 يوم': f"{float(buckets.get('1_30', {}).get('total', 0)):,.2f} ل.س",
+                '31-60 يوم': f"{float(buckets.get('31_60', {}).get('total', 0)):,.2f} ل.س",
+                '61-90 يوم': f"{float(buckets.get('61_90', {}).get('total', 0)):,.2f} ل.س",
+                'أكثر من 90 يوم': f"{float(buckets.get('over_90', {}).get('total', 0)):,.2f} ل.س"
+            }
+            
+            # Export to PDF
+            success = ExportService.export_to_pdf(
+                data=export_data,
+                columns=columns,
+                filename=filename,
+                title="تقرير أعمار الديون",
+                parent=self,
+                summary=summary_data,
+                date_range=(as_of_date, as_of_date)
+            )
+            
+            if success:
+                MessageDialog.info(self, "نجاح", "تم تصدير التقرير بنجاح")
+                
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل تصدير التقرير: {str(e)}")

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\accounts\models.py
+# hypothesis_version: 6.148.8
+
+[100, 255, '-created_at', '-date_joined', 'accountant', 'admin', 'audit_logs', 'avatars/', 'cashier', 'create', 'delete', 'export', 'is_active', 'is_staff', 'is_superuser', 'login', 'logout', 'manager', 'print', 'salesperson', 'update', 'view', 'viewer', 'warehouse', 'أمين مستودع', 'إنشاء', 'اسم الجدول', 'الإجراء', 'البريد الإلكتروني', 'التغييرات', 'الدور', 'الصورة الشخصية', 'المستخدم', 'المستخدمون', 'تسجيل خروج', 'تسجيل دخول', 'تصدير', 'تعديل', 'حذف', 'رقم الهاتف', 'سجل المراجعة', 'سجلات المراجعة', 'طباعة', 'عرض', 'عنوان IP', 'كاشير', 'محاسب', 'مدير', 'مدير النظام', 'مستخدم', 'مشاهد فقط', 'معرف السجل', 'مندوب مبيعات', 'وصف السجل']

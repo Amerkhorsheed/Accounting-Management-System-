@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\views.py
+# hypothesis_version: 6.148.8
+
+['-created_at', '-is_base_unit', 'GET', 'UNIT_IN_USE', 'address', 'adjustment_type', 'average', 'barcode', 'brand', 'category', 'code', 'conversion_factor', 'cost_price', 'create', 'created_at', 'created_by', 'date__gte', 'date__lte', 'date_from', 'date_to', 'description', 'detail', 'get', 'is_active', 'is_base_unit', 'is_default', 'is_taxable', 'list', 'method', 'movement_type', 'name', 'name_en', 'notes', 'parent', 'partial_update', 'post', 'product', 'product__code', 'product__name', 'product_id', 'product_pk', 'product_type', 'products_count', 'quantity', 'reason', 'reference_number', 'sale_price', 'sort_order', 'source_type', 'symbol', 'track_stock', 'unit', 'unit__name', 'unit__symbol', 'update', 'updated_at', 'warehouse', 'warehouse__name', 'warehouse_id', 'المنتج غير موجود', 'معرف المنتج مطلوب']

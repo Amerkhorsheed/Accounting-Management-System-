@@ -2,7 +2,10 @@
 Settings View - Updated with Currency and Tax Configuration
 
 Requirements: 4.1, 4.2 - Error handling for settings save operations
-Requirements: 6.1 - Unit management settings page
+Requirements: 9.1, 9.2, 9.3, 9.4, 9.5 - Unit management settings page
+Requirements: 8.1, 8.2, 8.3, 8.4, 8.5 - Category management settings page
+Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6 - Warehouse management settings page
+Requirements: 11.1, 11.2, 11.3, 11.4, 11.5 - Expense category management settings page
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -16,7 +19,10 @@ from PySide6.QtGui import QFont
 from ...config import Colors, Fonts, config
 from ...widgets.dialogs import MessageDialog
 from ...utils.error_handler import handle_ui_error
-from .units import UnitsManagementView
+from .units import UnitsManagementView, UnitsView
+from .categories import CategoriesView
+from .warehouses import WarehousesView, WarehousesManagementView
+from .expense_categories import ExpenseCategoriesView
 
 
 class SettingsNavButton(QPushButton):
@@ -307,6 +313,9 @@ class SettingsView(QWidget):
         nav_items = [
             ('general', 'الإعدادات العامة', '⚙️'),
             ('units', 'وحدات القياس', '📏'),
+            ('categories', 'الفئات', '📁'),
+            ('warehouses', 'المستودعات', '🏭'),
+            ('expense_categories', 'فئات المصروفات', '💰'),
         ]
         
         for key, label, icon in nav_items:
@@ -328,6 +337,18 @@ class SettingsView(QWidget):
         # Units management widget
         self.units_view = UnitsManagementView()
         self.stack.addWidget(self.units_view)
+        
+        # Categories management widget
+        self.categories_view = CategoriesView()
+        self.stack.addWidget(self.categories_view)
+        
+        # Warehouses management widget
+        self.warehouses_view = WarehousesView()
+        self.stack.addWidget(self.warehouses_view)
+        
+        # Expense categories management widget
+        self.expense_categories_view = ExpenseCategoriesView()
+        self.stack.addWidget(self.expense_categories_view)
         
         # Content wrapper with padding
         content_wrapper = QWidget()
@@ -356,6 +377,15 @@ class SettingsView(QWidget):
         elif key == 'units':
             self.stack.setCurrentWidget(self.units_view)
             self.units_view.refresh()
+        elif key == 'categories':
+            self.stack.setCurrentWidget(self.categories_view)
+            self.categories_view.refresh()
+        elif key == 'warehouses':
+            self.stack.setCurrentWidget(self.warehouses_view)
+            self.warehouses_view.refresh()
+        elif key == 'expense_categories':
+            self.stack.setCurrentWidget(self.expense_categories_view)
+            self.expense_categories_view.refresh()
             
     def refresh(self):
         """Refresh current settings view."""

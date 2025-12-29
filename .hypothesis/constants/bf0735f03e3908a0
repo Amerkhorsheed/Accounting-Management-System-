@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\migrations\0002_units_management.py
+# hypothesis_version: 6.148.8
+
+['%(class)s_created', '%(class)s_deleted', '%(class)s_updated', '0.00', '0001_initial', '1.0000', 'ID', 'ProductUnit', 'barcode', 'conversion_factor', 'cost_price', 'created_at', 'created_by', 'deleted_at', 'deleted_by', 'id', 'inventory', 'inventory.product', 'inventory.unit', 'is_active', 'is_base', 'is_base_unit', 'is_deleted', 'name', 'name_en', 'product', 'product_units', 'productunit', 'sale_price', 'symbol', 'unique_together', 'unique_unit_name', 'unique_unit_symbol', 'unit', 'updated_at', 'updated_by', 'verbose_name', 'verbose_name_plural', 'أنشئ بواسطة', 'الاسم بالإنجليزية', 'الباركود', 'المنتج', 'الوحدة', 'الوحدة الأساسية', 'تاريخ الإنشاء', 'تاريخ التحديث', 'تاريخ الحذف', 'حذف بواسطة', 'سعر البيع', 'سعر التكلفة', 'عدّل بواسطة', 'محذوف', 'معامل التحويل', 'نشط', 'وحدات المنتج', 'وحدة المنتج']

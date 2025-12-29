@@ -120,6 +120,30 @@ class PurchaseService:
     @staticmethod
     @handle_service_error
     @transaction.atomic
+    def mark_purchase_order_ordered(po_id: int, user=None) -> PurchaseOrder:
+        """
+        Mark a purchase order as ordered.
+        
+        Requirements: 12.4 - Status actions
+        """
+        
+        purchase_order = PurchaseOrder.objects.get(id=po_id)
+        
+        if purchase_order.status != PurchaseOrder.Status.APPROVED:
+            raise InvalidOperationException(
+                'تحديث حالة أمر الشراء',
+                'لا يمكن تحديث حالة أمر شراء غير معتمد إلى "تم الطلب"'
+            )
+        
+        purchase_order.status = PurchaseOrder.Status.ORDERED
+        purchase_order.updated_by = user
+        purchase_order.save()
+        
+        return purchase_order
+
+    @staticmethod
+    @handle_service_error
+    @transaction.atomic
     def receive_goods(
         po_id: int,
         received_date,

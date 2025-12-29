@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\sales\admin.py
+# hypothesis_version: 6.148.8
+
+['-invoice_date', '-payment_date', '-return_date', 'amount', 'code', 'current_balance', 'customer', 'customer__name', 'customer_type', 'email', 'invoice_date', 'invoice_number', 'invoice_type', 'is_active', 'name', 'original_invoice', 'payment_date', 'payment_method', 'payment_number', 'phone', 'profit', 'return_date', 'return_number', 'salesperson', 'status', 'subtotal', 'tax_amount', 'total', 'total_amount']

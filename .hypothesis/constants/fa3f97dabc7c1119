@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\accounts\views.py
+# hypothesis_version: 6.148.8
+
+['-created_at', '-date_joined', 'action', 'create', 'created_at', 'date_joined', 'destroy', 'email', 'first_name', 'get', 'is_active', 'last_name', 'list', 'message', 'model_name', 'new_password', 'object_repr', 'old_password', 'partial_update', 'phone', 'post', 'role', 'update', 'user', 'username', 'تم تعطيل المستخدم', 'تم تفعيل المستخدم']

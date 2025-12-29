@@ -1,6 +1,7 @@
 """
 Sales Views - API Endpoints
 """
+from django.db import models
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,7 +14,7 @@ from .models import Customer, Invoice, Payment, SalesReturn
 from .serializers import (
     CustomerListSerializer, CustomerDetailSerializer,
     InvoiceListSerializer, InvoiceDetailSerializer, InvoiceCreateSerializer,
-    PaymentSerializer, SalesReturnSerializer,
+    PaymentSerializer, SalesReturnSerializer, SalesReturnCreateSerializer,
     PaymentAllocationSerializer, PaymentWithAllocationsSerializer,
     CollectPaymentWithAllocationSerializer, UnpaidInvoiceSerializer
 )
@@ -45,8 +46,33 @@ class CustomerViewSet(viewsets.ModelViewSet):
         serializer.save(updated_by=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
-        """Soft delete the customer instead of hard delete."""
+        """
+        Soft delete the customer instead of hard delete.
+        
+        Requirements: 1.4, 1.5 - Deletion protection for customers with outstanding invoices
+        """
         instance = self.get_object()
+        
+        # Check for outstanding invoices (non-cancelled, non-deleted invoices with remaining balance)
+        outstanding_invoices = Invoice.objects.filter(
+            customer=instance,
+            is_deleted=False
+        ).exclude(
+            status='cancelled'
+        ).filter(
+            total_amount__gt=models.F('paid_amount')
+        )
+        
+        if outstanding_invoices.exists():
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف العميل لوجود فواتير مستحقة',
+                    'code': 'DELETION_PROTECTED',
+                    'outstanding_count': outstanding_invoices.count()
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -93,6 +119,24 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return InvoiceCreateSerializer
         return InvoiceDetailSerializer
 
+    def create(self, request, *args, **kwargs):
+        """
+        Create invoice and return full details for receipt printing.
+        
+        Returns InvoiceDetailSerializer data instead of InvoiceCreateSerializer
+        to include all fields needed for receipt printing (items with product_name, etc.)
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Return full invoice details using InvoiceDetailSerializer
+        # This includes items with product_name needed for receipt printing
+        invoice = serializer.instance
+        detail_serializer = InvoiceDetailSerializer(invoice)
+        headers = self.get_success_headers(detail_serializer.data)
+        return Response(detail_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
@@ -137,6 +181,30 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             user=request.user
         )
         return Response(SalesReturnSerializer(sales_return).data)
+
+    @handle_view_error
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """
+        Cancel an invoice and reverse all effects.
+        
+        Request body:
+            reason: Required - Reason for cancellation
+            
+        Requirements: 4.4, 4.5
+        - Validates invoice can be cancelled (confirmed, paid, or partial status)
+        - Reverses stock movements (adds stock back)
+        - Reverses customer balance changes
+        - Updates invoice status to cancelled
+        """
+        reason = request.data.get('reason')
+        
+        invoice = SalesService.cancel_invoice(
+            invoice_id=pk,
+            reason=reason,
+            user=request.user
+        )
+        return Response(InvoiceDetailSerializer(invoice).data)
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -292,13 +360,51 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return Response(output_serializer.data, status=status.HTTP_201_CREATED)
 
 
-class SalesReturnViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for viewing sales returns."""
+class SalesReturnViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for sales returns management.
+    
+    Supports:
+    - GET: List all sales returns
+    - GET /{id}: Get sales return details
+    - POST: Create a new sales return
+    
+    Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9
+    """
     
     queryset = SalesReturn.objects.select_related('original_invoice').prefetch_related('items')
-    serializer_class = SalesReturnSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['original_invoice']
     search_fields = ['return_number', 'original_invoice__invoice_number', 'reason']
     ordering = ['-return_date', '-return_number']
+
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action."""
+        if self.action == 'create':
+            return SalesReturnCreateSerializer
+        return SalesReturnSerializer
+
+    def create(self, request, *args, **kwargs):
+        """
+        Create a new sales return.
+        
+        Request body:
+            original_invoice: Invoice ID
+            return_date: Date of return
+            reason: Required - Reason for return
+            notes: Optional notes
+            items: List of items to return
+                - invoice_item_id: ID of the invoice item
+                - quantity: Quantity to return
+                - reason: Optional reason for this item
+        
+        Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        sales_return = serializer.save()
+        
+        # Return the created sales return with full details
+        output_serializer = SalesReturnSerializer(sales_return)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)

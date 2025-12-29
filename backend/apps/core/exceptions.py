@@ -120,6 +120,19 @@ def custom_exception_handler(exc, context):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
+    elif isinstance(exc, DeletionProtectedException):
+        # Return 400 for deletion protection errors
+        return Response(
+            {
+                'detail': exc.message,
+                'code': exc.code,
+                'model': exc.model,
+                'identifier': exc.identifier,
+                'reason': exc.reason,
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     elif isinstance(exc, BusinessException):
         # Generic business exception - return 400
         return Response(
@@ -379,3 +392,37 @@ class ConfigurationException(BusinessException):
         self.setting = setting
         self.detail_msg = detail  # Keep technical details for logging
         super().__init__(message, 'CONFIG_ERROR')
+
+
+class DeletionProtectedException(BusinessException):
+    """
+    Exception when deletion is prevented due to related records.
+    
+    Requirement 11.5: WHEN a category has expenses THEN THE Desktop_App 
+    SHALL prevent deletion and show an error message
+    """
+    
+    # Model name translations for user-friendly messages
+    MODEL_TRANSLATIONS = {
+        'Product': 'المنتج',
+        'Category': 'الفئة',
+        'ExpenseCategory': 'فئة المصروفات',
+        'Customer': 'العميل',
+        'Supplier': 'المورد',
+        'Invoice': 'الفاتورة',
+        'PurchaseOrder': 'أمر الشراء',
+        'Expense': 'المصروف',
+        'Payment': 'الدفعة',
+        'Stock': 'المخزون',
+        'Warehouse': 'المستودع',
+        'Unit': 'الوحدة',
+        'User': 'المستخدم',
+    }
+    
+    def __init__(self, model: str, identifier: str, reason: str):
+        translated_model = self.MODEL_TRANSLATIONS.get(model, model)
+        message = f"لا يمكن حذف {translated_model} '{identifier}': {reason}"
+        self.model = model
+        self.identifier = identifier
+        self.reason = reason
+        super().__init__(message, 'DELETION_PROTECTED')

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\config\settings\local.py
+# hypothesis_version: 6.148.8
+
+[0.0, 15000.0, 'ADDRESS', 'AMER', 'Accounting', 'DECIMAL_PLACES', 'ENGINE', 'EXCHANGE_RATE', 'HOST', 'INV', 'INVOICE_PREFIX', 'NAME', 'NAME_EN', 'OPTIONS', 'PHONE', 'PO', 'PRIMARY_CURRENCY', 'SECONDARY_CURRENCY', 'SYP', 'TAX_ENABLED', 'TAX_NUMBER', 'TAX_RATE', 'USD', 'Your Company', 'default', 'driver', 'extra_params', 'mssql', 'شركتكم']

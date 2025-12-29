@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\urls.py
+# hypothesis_version: 6.148.8
+
+['categories', 'movements', 'product', 'product-units', 'product-units-nested', 'products', 'stock', 'units', 'warehouses']

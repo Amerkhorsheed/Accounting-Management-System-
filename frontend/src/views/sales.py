@@ -1,2 +1,10 @@
 # Sales Views
-from .sales import CustomersView, InvoicesView, POSView, PaymentCollectionView
+from .sales import (
+    CustomersView, 
+    InvoicesView, 
+    POSView, 
+    PaymentCollectionView,
+    SalesReturnsView,
+    SalesReturnDialog,
+    InvoiceDetailsDialog
+)

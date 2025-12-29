@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\expenses\admin.py
+# hypothesis_version: 6.148.8
+
+['-expense_date', 'category', 'description', 'expense_date', 'expense_number', 'is_active', 'is_approved', 'name', 'parent', 'payee', 'payment_method', 'total_amount']

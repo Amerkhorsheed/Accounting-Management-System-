@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\migrations\0004_convert_existing_product_units.py
+# hypothesis_version: 6.148.8
+
+['0003_default_units', '1.0000', 'Product', 'ProductUnit', 'inventory']

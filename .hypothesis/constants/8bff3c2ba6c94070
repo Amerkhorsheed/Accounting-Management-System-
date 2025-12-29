@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\config\urls.py
+# hypothesis_version: 6.148.8
+
+['admin/', 'api.v1.urls', 'api/docs/', 'api/schema/', 'api/v1/', 'schema', 'swagger-ui']

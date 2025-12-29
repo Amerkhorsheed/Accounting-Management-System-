@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\accounts\admin.py
+# hypothesis_version: 6.148.8
+
+['-created_at', '-date_joined', 'action', 'avatar', 'changes', 'created_at', 'email', 'fields', 'first_name', 'ip_address', 'is_active', 'is_staff', 'last_name', 'model_name', 'object_id', 'object_repr', 'phone', 'role', 'user', 'username', 'معلومات إضافية']

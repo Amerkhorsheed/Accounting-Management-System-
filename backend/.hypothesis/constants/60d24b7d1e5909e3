@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\decorators.py
+# hypothesis_version: 6.148.8
+
+['DATABASE_ERROR', 'FOREIGN KEY', 'INTERNAL_ERROR', 'NOT NULL', 'OPERATION_FAILED', 'UNIQUE constraint', 'UNKNOWN', 'anonymous', 'apps.core.decorators', 'code', 'context', 'data', 'detail', 'error_message', 'error_type', 'foreign key', 'function', 'id', 'is_authenticated', 'method', 'non-dict', 'not null', 'path', 'query_params', 'request_data_keys', 'unique', 'user', 'user_id', 'username']

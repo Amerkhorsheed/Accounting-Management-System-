@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\api\v1\urls.py
+# hypothesis_version: 6.148.8
+
+['apps.accounts.urls', 'apps.core.urls', 'apps.expenses.urls', 'apps.inventory.urls', 'apps.purchases.urls', 'apps.reports.urls', 'apps.sales.urls', 'auth/', 'core/', 'expenses/', 'inventory/', 'purchases/', 'reports/', 'sales/']

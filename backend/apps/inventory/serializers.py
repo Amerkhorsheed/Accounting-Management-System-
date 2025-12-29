@@ -684,9 +684,16 @@ class StockAdjustmentSerializer(serializers.Serializer):
 
 
 class StockMovementSerializer(serializers.ModelSerializer):
-    """Serializer for StockMovement model."""
+    """
+    Serializer for StockMovement model.
+    
+    Requirements:
+    - 6.1: Display stock movements list with columns (date, product, warehouse, type, quantity, balance before, balance after, reference)
+    - 6.3: Display full details including source document reference
+    """
     
     product_name = serializers.CharField(source='product.name', read_only=True)
+    product_code = serializers.CharField(source='product.code', read_only=True)
     warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
     movement_type_display = serializers.CharField(source='get_movement_type_display', read_only=True)
     source_type_display = serializers.CharField(source='get_source_type_display', read_only=True)
@@ -695,10 +702,12 @@ class StockMovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = StockMovement
         fields = [
-            'id', 'product', 'product_name', 'warehouse', 'warehouse_name',
+            'id', 'product', 'product_name', 'product_code', 
+            'warehouse', 'warehouse_name',
             'movement_type', 'movement_type_display',
             'source_type', 'source_type_display',
             'quantity', 'unit_cost', 'reference_number',
+            'reference_type', 'reference_id',
             'balance_before', 'balance_after',
             'notes', 'created_by', 'created_by_name', 'created_at'
         ]

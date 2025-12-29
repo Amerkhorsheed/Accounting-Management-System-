@@ -1,0 +1,20 @@
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\pytest_asyncio\plugin.py:211: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-8.3.3, pluggy-1.5.0 -- C:\Users\ahmad\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+django: version: 5.0.14, settings: config.settings.testing (from option)
+PySide6 6.10.1 -- Qt runtime 6.10.1 -- Qt compiled 6.10.1
+rootdir: C:\ERP\backend
+configfile: pytest.ini
+plugins: anyio-4.3.0, hypothesis-6.148.8, asyncio-1.1.0, cov-6.2.1, django-4.11.1, qt-4.5.0, typeguard-4.4.4
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... ERROR: file or directory not found: ;
+
+collected 0 items
+
+============================ Hypothesis Statistics ============================
+============================ no tests ran in 0.01s ============================

@@ -5,6 +5,7 @@ Requirements: 4.1, 4.2 - Error handling for CRUD operations and form submissions
 Requirements: 2.1, 2.5, 2.6, 7.1, 7.3 - Payment collection and allocation
 Requirements: 1.1, 1.2, 1.4, 1.6, 6.4, 6.5 - Credit invoice support
 Requirements: 3.1, 3.2, 3.3 - Unit selection in sales
+Requirements: 5.1, 5.9 - Sales returns management
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -26,6 +27,12 @@ from ...widgets.cards import Card
 from ...widgets.unit_selector import UnitSelectorComboBox
 from ...services.api import api, ApiException
 from ...utils.error_handler import handle_ui_error
+
+# Import returns components
+from .returns import SalesReturnDialog, SalesReturnsView, InvoiceDetailsDialog
+
+# Import receipt printer
+from ...printing.receipt import ReceiptPrinter
 
 
 class CustomersView(QWidget):
@@ -162,16 +169,31 @@ class CustomersView(QWidget):
     
     @handle_ui_error
     def delete_customer(self, data: dict):
-        """Delete customer via API."""
+        """
+        Delete customer via API.
+        
+        Requirements: 1.4, 1.5 - Delete with confirmation and handle deletion protection
+        """
         dialog = ConfirmDialog(
             "حذف العميل",
             f"هل أنت متأكد من حذف العميل '{data.get('name')}'؟",
             parent=self
         )
         if dialog.exec():
-            api.delete(f'sales/customers/{data.get("id")}/')
-            MessageDialog.success(self, "نجاح", "تم حذف العميل بنجاح")
-            self.refresh()
+            try:
+                api.delete_customer(data.get('id'))
+                MessageDialog.success(self, "نجاح", "تم حذف العميل بنجاح")
+                self.refresh()
+            except ApiException as e:
+                # Handle deletion protection error
+                if e.error_code == 'DELETION_PROTECTED' or 'فواتير مستحقة' in str(e):
+                    MessageDialog.error(
+                        self, 
+                        "لا يمكن الحذف", 
+                        "لا يمكن حذف هذا العميل لوجود فواتير مستحقة. يرجى تسوية الفواتير أولاً."
+                    )
+                else:
+                    raise
 
 
 class InvoicesView(QWidget):
@@ -179,10 +201,15 @@ class InvoicesView(QWidget):
     Invoices management view.
     
     Requirements: 1.1, 1.2, 1.3, 1.4 - Invoice creation and management
+    Requirements: 4.2 - Display full invoice with items on double-click
+    Requirements: 4.4 - Cancel action for confirmed invoices
+    Requirements: 4.6 - Filtering by status, date range, and customer
+    Requirements: 5.1 - Create Return action for confirmed/paid invoices
     """
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.customers_cache = []
         self.setup_ui()
         
     def setup_ui(self):
@@ -199,7 +226,64 @@ class InvoicesView(QWidget):
         header.addStretch()
         layout.addLayout(header)
         
-        # Invoices table
+        # Requirements: 4.6 - Filters section
+        filters_frame = QFrame()
+        filters_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+        filters_layout = QHBoxLayout(filters_frame)
+        filters_layout.setSpacing(16)
+        
+        # Status filter dropdown
+        filters_layout.addWidget(QLabel("الحالة:"))
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("الكل", "")
+        self.status_filter.addItem("مسودة", "draft")
+        self.status_filter.addItem("مؤكدة", "confirmed")
+        self.status_filter.addItem("مدفوعة", "paid")
+        self.status_filter.addItem("مدفوعة جزئياً", "partial")
+        self.status_filter.addItem("ملغاة", "cancelled")
+        self.status_filter.setMinimumWidth(120)
+        filters_layout.addWidget(self.status_filter)
+        
+        # Date range filter
+        filters_layout.addWidget(QLabel("من:"))
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDate(QDate.currentDate().addMonths(-1))
+        self.date_from.setMaximumWidth(130)
+        filters_layout.addWidget(self.date_from)
+        
+        filters_layout.addWidget(QLabel("إلى:"))
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDate(QDate.currentDate())
+        self.date_to.setMaximumWidth(130)
+        filters_layout.addWidget(self.date_to)
+        
+        # Customer filter
+        filters_layout.addWidget(QLabel("العميل:"))
+        self.customer_filter = QComboBox()
+        self.customer_filter.addItem("الكل", "")
+        self.customer_filter.setMinimumWidth(180)
+        self.customer_filter.setEditable(True)
+        self.customer_filter.setInsertPolicy(QComboBox.NoInsert)
+        filters_layout.addWidget(self.customer_filter)
+        
+        # Apply filter button
+        filter_btn = QPushButton("🔍 بحث")
+        filter_btn.setProperty("class", "primary")
+        filter_btn.clicked.connect(self.apply_filters)
+        filters_layout.addWidget(filter_btn)
+        
+        # Clear filters button
+        clear_btn = QPushButton("مسح")
+        clear_btn.setProperty("class", "secondary")
+        clear_btn.clicked.connect(self.clear_filters)
+        filters_layout.addWidget(clear_btn)
+        
+        filters_layout.addStretch()
+        layout.addWidget(filters_frame)
+        
+        # Invoices table with view and return actions
         columns = [
             {'key': 'invoice_number', 'label': 'رقم الفاتورة', 'type': 'text'},
             {'key': 'customer_name', 'label': 'العميل', 'type': 'text'},
@@ -208,11 +292,15 @@ class InvoicesView(QWidget):
             {'key': 'status_display', 'label': 'الحالة', 'type': 'text'},
         ]
         
-        self.table = DataTable(columns)
+        # Requirements: 5.1 - Add return action for invoices
+        self.table = DataTable(columns, actions=['view'])
         self.table.add_btn.setText("➕ فاتورة جديدة")
         # Requirements: 1.1 - Connect add button to open form dialog
         self.table.add_btn.clicked.connect(self.add_invoice)
         self.table.action_clicked.connect(self.on_action)
+        self.table.row_double_clicked.connect(self.view_invoice_details)
+        self.table.page_changed.connect(self.on_page_changed)
+        self.table.sort_changed.connect(self.on_sort_changed)
         
         layout.addWidget(self.table)
     
@@ -249,35 +337,319 @@ class InvoicesView(QWidget):
     @handle_ui_error
     def refresh(self):
         """Refresh invoices data from API."""
-        response = api.get_invoices()
-        if isinstance(response, dict) and 'results' in response:
-            invoices = response['results']
+        # Load customers for filter dropdown
+        self._load_customers()
+        
+        # Build params from filters
+        params = self._build_params()
+        
+        response = api.get_invoices(params)
+        if isinstance(response, dict):
+            invoices = response.get('results', [])
+            total = response.get('count', len(invoices))
         else:
             invoices = response if isinstance(response, list) else []
-        self.table.set_data(invoices)
+            total = len(invoices)
+        
+        self.table.set_data(invoices, total)
+    
+    def _load_customers(self):
+        """Load customers for filter dropdown."""
+        try:
+            response = api.get_customers()
+            if isinstance(response, dict) and 'results' in response:
+                self.customers_cache = response['results']
+            else:
+                self.customers_cache = response if isinstance(response, list) else []
+            
+            # Update customer filter combo (preserve current selection)
+            current_customer = self.customer_filter.currentData()
+            self.customer_filter.clear()
+            self.customer_filter.addItem("الكل", "")
+            for customer in self.customers_cache:
+                display_text = f"{customer.get('name', '')} ({customer.get('code', '')})"
+                self.customer_filter.addItem(display_text, customer.get('id'))
+            
+            # Restore selection if possible
+            if current_customer:
+                for i in range(self.customer_filter.count()):
+                    if self.customer_filter.itemData(i) == current_customer:
+                        self.customer_filter.setCurrentIndex(i)
+                        break
+        except ApiException:
+            pass  # Silently fail - customers will just not be loaded
+    
+    def _build_params(self) -> dict:
+        """Build API parameters from filters."""
+        params = self.table.get_pagination_params()
+        params.update(self.table.get_sort_params())
+        
+        # Status filter
+        status = self.status_filter.currentData()
+        if status:
+            params['status'] = status
+        
+        # Date range
+        date_from = self.date_from.date().toString('yyyy-MM-dd')
+        date_to = self.date_to.date().toString('yyyy-MM-dd')
+        params['invoice_date__gte'] = date_from
+        params['invoice_date__lte'] = date_to
+        
+        # Customer filter
+        customer_id = self.customer_filter.currentData()
+        if customer_id:
+            params['customer'] = customer_id
+        
+        return params
+    
+    def apply_filters(self):
+        """Apply filters and refresh."""
+        self.table.current_page = 1
+        self.refresh()
+    
+    def clear_filters(self):
+        """Clear all filters."""
+        self.status_filter.setCurrentIndex(0)
+        self.date_from.setDate(QDate.currentDate().addMonths(-1))
+        self.date_to.setDate(QDate.currentDate())
+        self.customer_filter.setCurrentIndex(0)
+        self.table.current_page = 1
+        self.refresh()
+    
+    def on_page_changed(self, page: int, page_size: int):
+        """Handle page change."""
+        self.refresh()
+    
+    def on_sort_changed(self, column: str, order: str):
+        """Handle sort change."""
+        self.refresh()
     
     def on_action(self, action: str, row: int, data: dict):
         """Handle table action."""
         if action == 'view':
-            # View invoice details
-            invoice_id = data.get('id')
-            if invoice_id:
-                try:
-                    invoice = api.get_invoice(invoice_id)
-                    # Show invoice details dialog
-                    details = f"""
-رقم الفاتورة: {invoice.get('invoice_number', '')}
-التاريخ: {invoice.get('invoice_date', '')}
-العميل: {invoice.get('customer_name', '')}
-نوع الفاتورة: {'آجل' if invoice.get('invoice_type') == 'credit' else 'نقدي'}
-الحالة: {invoice.get('status_display', invoice.get('status', ''))}
-المجموع: {float(invoice.get('total_amount', 0)):,.2f} ل.س
-المدفوع: {float(invoice.get('paid_amount', 0)):,.2f} ل.س
-المتبقي: {float(invoice.get('remaining_amount', 0)):,.2f} ل.س
-                    """.strip()
-                    MessageDialog.info(self, "تفاصيل الفاتورة", details)
-                except ApiException as e:
-                    MessageDialog.error(self, "خطأ", f"فشل في تحميل تفاصيل الفاتورة: {str(e)}")
+            self.view_invoice_details(row, data)
+        elif action == 'return':
+            self.create_return(row, data)
+    
+    @handle_ui_error
+    def view_invoice_details(self, row: int, data: dict):
+        """
+        View invoice details.
+        
+        Requirements: 4.2 - Display full invoice with items on double-click
+        """
+        invoice_id = data.get('id')
+        if invoice_id:
+            try:
+                invoice = api.get_invoice(invoice_id)
+                # Show invoice details dialog with return and cancel options
+                dialog = InvoiceDetailsDialog(invoice, parent=self)
+                dialog.return_requested.connect(self.create_return_from_invoice)
+                dialog.cancel_requested.connect(self.cancel_invoice_from_dialog)
+                dialog.exec()
+            except ApiException as e:
+                MessageDialog.error(self, "خطأ", f"فشل في تحميل تفاصيل الفاتورة: {str(e)}")
+    
+    @handle_ui_error
+    def create_return(self, row: int, data: dict):
+        """
+        Create a sales return for an invoice.
+        
+        Requirements: 5.1 - WHEN a user selects a confirmed/paid invoice 
+        THEN THE Desktop_App SHALL enable a "Create Return" action
+        """
+        invoice_id = data.get('id')
+        status = data.get('status', '')
+        
+        # Requirements: 5.1 - Only allow returns for confirmed/paid/partial invoices
+        if status not in ['confirmed', 'paid', 'partial']:
+            MessageDialog.warning(
+                self, 
+                "غير مسموح", 
+                "لا يمكن إنشاء مرتجع إلا للفواتير المؤكدة أو المدفوعة"
+            )
+            return
+        
+        try:
+            # Get full invoice details with items
+            invoice = api.get_invoice(invoice_id)
+            self._open_return_dialog(invoice)
+        except ApiException as e:
+            MessageDialog.error(self, "خطأ", f"فشل في تحميل بيانات الفاتورة: {str(e)}")
+    
+    def create_return_from_invoice(self, invoice: dict):
+        """Create return from invoice details dialog."""
+        self._open_return_dialog(invoice)
+    
+    def _open_return_dialog(self, invoice: dict):
+        """Open the sales return dialog."""
+        from .returns import SalesReturnDialog
+        
+        dialog = SalesReturnDialog(invoice, parent=self)
+        dialog.saved.connect(lambda data: self._save_return(invoice.get('id'), data))
+        dialog.exec()
+    
+    @handle_ui_error
+    def _save_return(self, invoice_id: int, data: dict):
+        """
+        Save the sales return via API.
+        
+        Requirements: 5.1 - Call API and refresh on success
+        """
+        try:
+            result = api.create_sales_return(invoice_id, data)
+            MessageDialog.success(
+                self, 
+                "نجاح", 
+                f"تم إنشاء المرتجع رقم {result.get('return_number', '')} بنجاح"
+            )
+            self.refresh()
+        except ApiException as e:
+            MessageDialog.error(self, "خطأ", f"فشل في إنشاء المرتجع: {str(e)}")
+    
+    def cancel_invoice_from_dialog(self, invoice: dict):
+        """
+        Handle cancel request from invoice details dialog.
+        
+        Requirements: 4.4 - Cancel action for confirmed invoices
+        """
+        self._show_cancel_dialog(invoice)
+    
+    def _show_cancel_dialog(self, invoice: dict):
+        """
+        Show cancel confirmation dialog with reason input.
+        
+        Requirements: 4.4 - Show confirmation with reason input
+        """
+        dialog = InvoiceCancelDialog(invoice, parent=self)
+        dialog.confirmed.connect(lambda reason: self._cancel_invoice(invoice.get('id'), reason))
+        dialog.exec()
+    
+    @handle_ui_error
+    def _cancel_invoice(self, invoice_id: int, reason: str):
+        """
+        Cancel invoice via API.
+        
+        Requirements: 4.4, 4.5 - Call cancel API and refresh
+        """
+        try:
+            result = api.cancel_invoice(invoice_id, reason)
+            MessageDialog.success(
+                self, 
+                "نجاح", 
+                f"تم إلغاء الفاتورة بنجاح"
+            )
+            self.refresh()
+        except ApiException as e:
+            MessageDialog.error(self, "خطأ", f"فشل في إلغاء الفاتورة: {str(e)}")
+
+
+class InvoiceCancelDialog(QDialog):
+    """
+    Dialog for confirming invoice cancellation with reason input.
+    
+    Requirements: 4.4 - Show confirmation with reason input
+    """
+    
+    confirmed = Signal(str)  # Emits the cancellation reason
+    
+    def __init__(self, invoice: dict, parent=None):
+        super().__init__(parent)
+        self.invoice = invoice
+        
+        self.setWindowTitle("إلغاء الفاتورة")
+        self.setMinimumWidth(450)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Initialize dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+        
+        # Warning icon and title
+        header = QHBoxLayout()
+        icon = QLabel("⚠️")
+        icon.setFont(QFont(Fonts.FAMILY_AR, 36))
+        header.addWidget(icon)
+        
+        title = QLabel("تأكيد إلغاء الفاتورة")
+        title.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H2, QFont.Bold))
+        title.setStyleSheet(f"color: {Colors.WARNING};")
+        header.addWidget(title)
+        header.addStretch()
+        layout.addLayout(header)
+        
+        # Invoice info
+        info_frame = QFrame()
+        info_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+        info_layout = QVBoxLayout(info_frame)
+        info_layout.setSpacing(8)
+        
+        info_layout.addWidget(QLabel(f"رقم الفاتورة: {self.invoice.get('invoice_number', '')}"))
+        info_layout.addWidget(QLabel(f"العميل: {self.invoice.get('customer_name', '')}"))
+        total = float(self.invoice.get('total_amount', 0))
+        info_layout.addWidget(QLabel(f"المبلغ: {total:,.2f} ل.س"))
+        
+        layout.addWidget(info_frame)
+        
+        # Warning message
+        warning_label = QLabel(
+            "⚠️ سيتم إلغاء الفاتورة وإرجاع المخزون وتعديل رصيد العميل.\n"
+            "هذه العملية لا يمكن التراجع عنها."
+        )
+        warning_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: bold;")
+        warning_label.setWordWrap(True)
+        layout.addWidget(warning_label)
+        
+        # Reason input
+        reason_label = QLabel("سبب الإلغاء (مطلوب):")
+        reason_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY))
+        layout.addWidget(reason_label)
+        
+        self.reason_input = QTextEdit()
+        self.reason_input.setPlaceholderText("أدخل سبب إلغاء الفاتورة...")
+        self.reason_input.setMaximumHeight(100)
+        layout.addWidget(self.reason_input)
+        
+        # Error label
+        self.error_label = QLabel()
+        self.error_label.setStyleSheet(f"color: {Colors.DANGER};")
+        self.error_label.setVisible(False)
+        layout.addWidget(self.error_label)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        cancel_btn = QPushButton("تراجع")
+        cancel_btn.setProperty("class", "secondary")
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+        
+        confirm_btn = QPushButton("تأكيد الإلغاء")
+        confirm_btn.setProperty("class", "danger")
+        confirm_btn.clicked.connect(self.confirm)
+        buttons_layout.addWidget(confirm_btn)
+        
+        layout.addLayout(buttons_layout)
+    
+    def confirm(self):
+        """Validate and confirm cancellation."""
+        reason = self.reason_input.toPlainText().strip()
+        
+        if not reason:
+            self.error_label.setText("يجب إدخال سبب الإلغاء")
+            self.error_label.setVisible(True)
+            return
+        
+        if len(reason) < 5:
+            self.error_label.setText("سبب الإلغاء قصير جداً (5 أحرف على الأقل)")
+            self.error_label.setVisible(True)
+            return
+        
+        self.confirmed.emit(reason)
+        self.accept()
 
 
 class POSView(QWidget):
@@ -294,6 +666,7 @@ class POSView(QWidget):
         self.customers_cache = []
         self.selected_customer = None
         self.default_warehouse = None
+        self.last_completed_invoice = None  # Requirements: 4.1 - Store last invoice for printing
         self.setup_ui()
         
     def setup_ui(self):
@@ -501,6 +874,7 @@ class POSView(QWidget):
         print_btn.setProperty("class", "secondary")
         print_btn.setMinimumHeight(60)
         print_btn.setProperty("style", "large")
+        print_btn.clicked.connect(self.print_receipt)  # Requirements: 3.1 - Connect print button
         actions_layout.addWidget(print_btn, 1, 1)
         
         right_layout.addLayout(actions_layout)
@@ -651,13 +1025,19 @@ class POSView(QWidget):
         self.update_totals()
         
     def update_totals(self):
-        """Update cart totals."""
+        """
+        Update cart totals.
+        
+        Requirements: 2.1, 2.2 - POS transactions are always tax-free
+        Tax is always 0 for POS regardless of global tax settings.
+        """
         subtotal = sum(item.get('total', 0) for item in self.cart_items)
-        tax = 0  # Tax disabled by default
+        # Requirements: 2.1, 2.2 - Always display tax as 0.00 for POS
+        tax = 0
         total = subtotal + tax
         
         self.subtotal_label.setText(f"{subtotal:,.2f} ل.س")
-        self.tax_label.setText(f"{tax:,.2f} ل.س")
+        self.tax_label.setText(f"0.00 ل.س")  # Always show 0.00 for POS
         self.total_label.setText(f"{total:,.2f} ل.س")
     
     def get_cart_total(self) -> float:
@@ -730,9 +1110,8 @@ class POSView(QWidget):
         Create and confirm invoice via API.
         
         Requirements: 1.2, 1.5, 7.1
+        Requirements: 2.1, 2.3 - POS transactions are always tax-free
         """
-        from ...config import config
-        
         # Ensure we have a warehouse
         if not self.default_warehouse:
             MessageDialog.error(self, "خطأ", "لم يتم تحديد المستودع الافتراضي")
@@ -741,10 +1120,6 @@ class POSView(QWidget):
         # Prepare invoice data
         cart_total = self.get_cart_total()
         invoice_date = datetime.now().date()
-        
-        # Determine tax rate based on global settings
-        # If TAX_ENABLED is False, send tax_rate=0 to override product defaults
-        global_tax_rate = config.TAX_RATE if config.TAX_ENABLED else 0
         
         invoice_data = {
             'warehouse': self.default_warehouse.get('id'),
@@ -755,7 +1130,7 @@ class POSView(QWidget):
                     'product': item['product_id'],
                     'quantity': item['quantity'],
                     'unit_price': item['unit_price'],
-                    'tax_rate': global_tax_rate  # Respect global tax settings
+                    'tax_rate': 0  # Requirements: 2.1, 2.3 - Always 0 for POS transactions
                 }
                 for item in self.cart_items
             ],
@@ -783,6 +1158,18 @@ class POSView(QWidget):
             # Create and confirm invoice in one go
             result = api.create_invoice(invoice_data)
             
+            # Requirements: 4.1 - Store last completed invoice for printing
+            self.last_completed_invoice = result
+            
+            # Requirements: 5.1, 5.2 - Open cash drawer for cash payments (silent failure)
+            if payment_method == 'cash':
+                try:
+                    printer = ReceiptPrinter()
+                    printer.open_cash_drawer()
+                except Exception:
+                    # Requirements: 5.2 - Silent failure if cash drawer command fails
+                    pass
+            
             MessageDialog.success(
                 self, 
                 "نجاح", 
@@ -796,10 +1183,38 @@ class POSView(QWidget):
         except ApiException as e:
             MessageDialog.error(self, "خطأ", str(e))
     
+    def print_receipt(self):
+        """
+        Print receipt for the last completed invoice.
+        
+        Requirements: 3.1 - Print receipt when user clicks print button
+        Requirements: 4.1 - Use stored last_completed_invoice data
+        Requirements: 4.2 - Show warning if no invoice available
+        Requirements: 4.3 - Call ReceiptPrinter with invoice data
+        Requirements: 4.4 - Handle print errors gracefully
+        """
+        # Requirements: 4.2 - Check if last_completed_invoice exists
+        if not self.last_completed_invoice:
+            MessageDialog.warning(self, "تنبيه", "لا توجد فاتورة للطباعة")
+            return
+        
+        try:
+            # Requirements: 4.3 - Call ReceiptPrinter with invoice data
+            printer = ReceiptPrinter()
+            result = printer.print_receipt(self.last_completed_invoice)
+            
+            if result is True:
+                MessageDialog.success(self, "نجاح", "تم إرسال الفاتورة للطباعة")
+            elif isinstance(result, str):
+                # Fallback to file - result is the filepath
+                MessageDialog.info(self, "معلومات", f"تم حفظ الفاتورة في ملف: {result}")
+        except Exception as e:
+            # Requirements: 4.4 - Handle print errors gracefully
+            MessageDialog.error(self, "خطأ في الطباعة", f"فشل في طباعة الفاتورة: {str(e)}")
+    
 
     @handle_ui_error
     def refresh(self):
-        """Refresh view - load products, customers, and default warehouse."""
         # Load default warehouse
         try:
             self.default_warehouse = api.get_default_warehouse()
@@ -1807,4 +2222,12 @@ class InvoiceFormDialog(QDialog):
 # Import PaymentCollectionView from separate module
 from .payment_collection import PaymentCollectionView
 
-__all__ = ['CustomersView', 'InvoicesView', 'POSView', 'PaymentCollectionView', 'CreditLimitOverrideDialog', 'InvoiceFormDialog']
+# Import PaymentsView from separate module
+from .payments import PaymentsView, PaymentCreateDialog, PaymentDetailsDialog
+
+__all__ = [
+    'CustomersView', 'InvoicesView', 'POSView', 'PaymentCollectionView', 
+    'CreditLimitOverrideDialog', 'InvoiceFormDialog',
+    'SalesReturnDialog', 'SalesReturnsView', 'InvoiceDetailsDialog',
+    'PaymentsView', 'PaymentCreateDialog', 'PaymentDetailsDialog'
+]

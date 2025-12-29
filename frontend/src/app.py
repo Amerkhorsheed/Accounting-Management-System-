@@ -13,7 +13,9 @@ from .widgets.sidebar import Sidebar
 from .widgets.header import Header
 from .views.dashboard import DashboardView
 from .views.inventory import ProductsView
-from .views.sales import CustomersView, InvoicesView, POSView
+from .views.inventory.stock_movements import StockMovementsView
+from .views.sales import CustomersView, InvoicesView, POSView, SalesReturnsView
+from .views.sales.payments import PaymentsView
 from .views.purchases import SuppliersView, PurchaseOrdersView
 from .views.expenses import ExpensesView
 from .views.reports import ReportsView
@@ -108,6 +110,10 @@ class MainApplication(QMainWindow):
         self.products_view = ProductsView()
         self.stack.addWidget(self.products_view)
         
+        # Stock Movements - Requirements: 20.1 - Add Stock Movements under Inventory
+        self.stock_movements_view = StockMovementsView()
+        self.stack.addWidget(self.stock_movements_view)
+        
         # Sales
         self.pos_view = POSView()
         self.stack.addWidget(self.pos_view)
@@ -117,6 +123,14 @@ class MainApplication(QMainWindow):
         
         self.customers_view = CustomersView()
         self.stack.addWidget(self.customers_view)
+        
+        # Sales Returns - Requirements: 20.1 - Add Sales Returns under Sales
+        self.sales_returns_view = SalesReturnsView()
+        self.stack.addWidget(self.sales_returns_view)
+        
+        # Payments - Requirements: 20.1 - Add Payments under Sales
+        self.payments_view = PaymentsView()
+        self.stack.addWidget(self.payments_view)
         
         # Purchases
         self.suppliers_view = SuppliersView()
@@ -133,17 +147,21 @@ class MainApplication(QMainWindow):
         self.reports_view = ReportsView()
         self.stack.addWidget(self.reports_view)
         
-        # Settings
+        # Settings (includes Categories, Units, Warehouses, Expense Categories)
+        # Requirements: 20.1 - Categories, Units, Warehouses, Expense Categories are under Settings
         self.settings_view = SettingsView()
         self.stack.addWidget(self.settings_view)
         
-        # View mapping
+        # View mapping - Requirements: 20.2 - Register all new views in view stack
         self.views = {
             'dashboard': self.dashboard_view,
             'products': self.products_view,
+            'stock_movements': self.stock_movements_view,
             'pos': self.pos_view,
             'invoices': self.invoices_view,
             'customers': self.customers_view,
+            'sales_returns': self.sales_returns_view,
+            'payments': self.payments_view,
             'suppliers': self.suppliers_view,
             'purchases': self.purchase_orders_view,
             'expenses': self.expenses_view,
@@ -157,13 +175,16 @@ class MainApplication(QMainWindow):
             view = self.views[view_name]
             self.stack.setCurrentWidget(view)
             
-            # Update header title
+            # Update header title - Requirements: 20.2 - Connect navigation signals
             titles = {
                 'dashboard': 'لوحة التحكم',
                 'products': 'المنتجات',
+                'stock_movements': 'حركة المخزون',
                 'pos': 'نقطة البيع',
                 'invoices': 'الفواتير',
                 'customers': 'العملاء',
+                'sales_returns': 'مرتجعات المبيعات',
+                'payments': 'المدفوعات',
                 'suppliers': 'الموردون',
                 'purchases': 'المشتريات',
                 'expenses': 'المصروفات',

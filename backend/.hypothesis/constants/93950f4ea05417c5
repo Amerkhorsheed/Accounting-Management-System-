@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\admin.py
+# hypothesis_version: 6.148.8
+
+['-is_default', '-is_primary', 'code', 'description', 'exchange_rate', 'is_active', 'is_default', 'is_primary', 'key', 'name', 'rate', 'symbol', 'updated_at', 'value']

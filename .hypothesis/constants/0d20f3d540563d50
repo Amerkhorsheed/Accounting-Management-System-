@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\config\settings\testing.py
+# hypothesis_version: 6.148.8
+
+['ENGINE', 'NAME', 'db.sqlite3', 'default', 'test-key']

@@ -7,6 +7,7 @@ showing all transactions and running balance.
 Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
 """
 from typing import List, Dict, Optional
+from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QGridLayout, QScrollArea,
@@ -20,6 +21,7 @@ from ...config import Colors, Fonts
 from ...widgets.cards import Card
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
+from ...services.export import ExportService, ExportError
 from ...utils.error_handler import handle_ui_error
 
 
@@ -444,30 +446,208 @@ class CustomerStatementView(QWidget):
         """
         Export statement to Excel.
         
-        Requirements: 3.5 - Export to Excel format (placeholder)
+        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
         """
         if not self.selected_customer:
             MessageDialog.warning(self, "تنبيه", "يرجى اختيار العميل أولاً")
             return
         
-        MessageDialog.info(self, "معلومات", "تصدير Excel قيد التطوير")
+        if not self.transactions:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
+            return
+        
+        try:
+            # Define columns for export
+            columns = [
+                ('date', 'التاريخ'),
+                ('type_display', 'النوع'),
+                ('reference', 'المرجع'),
+                ('description', 'البيان'),
+                ('debit', 'مدين'),
+                ('credit', 'دائن'),
+                ('balance', 'الرصيد')
+            ]
+            
+            # Prepare data with display values
+            export_data = []
+            for trans in self.transactions:
+                trans_type = trans.get('type', '')
+                type_display = self._get_transaction_type_display(trans_type)
+                
+                export_data.append({
+                    'date': trans.get('date', ''),
+                    'type_display': type_display,
+                    'reference': trans.get('reference', ''),
+                    'description': trans.get('description', ''),
+                    'debit': float(trans.get('debit', 0)),
+                    'credit': float(trans.get('credit', 0)),
+                    'balance': float(trans.get('balance', 0))
+                })
+            
+            # Generate filename with customer name and date
+            customer_name = self.selected_customer.get('name', 'عميل')
+            filename = f"كشف_حساب_{customer_name}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            
+            # Prepare summary data
+            opening = float(self.statement_data.get('opening_balance', 0))
+            closing = float(self.statement_data.get('closing_balance', 0))
+            total_debit = float(self.statement_data.get('total_invoices', 0))
+            total_payments = float(self.statement_data.get('total_payments', 0))
+            total_returns = float(self.statement_data.get('total_returns', 0))
+            
+            summary_data = {
+                'اسم العميل': self.selected_customer.get('name', ''),
+                'كود العميل': self.selected_customer.get('code', ''),
+                'الرصيد الافتتاحي': f"{opening:,.2f} ل.س",
+                'إجمالي المدين': f"{total_debit:,.2f} ل.س",
+                'إجمالي الدائن': f"{(total_payments + total_returns):,.2f} ل.س",
+                'الرصيد الختامي': f"{closing:,.2f} ل.س"
+            }
+            
+            # Export to Excel
+            success = ExportService.export_to_excel(
+                data=export_data,
+                columns=columns,
+                filename=filename,
+                title="كشف حساب العميل",
+                parent=self,
+                summary=summary_data
+            )
+            
+            if success:
+                MessageDialog.info(self, "نجاح", "تم تصدير الكشف بنجاح")
+                
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل تصدير الكشف: {str(e)}")
     
     def _export_pdf(self):
         """
         Export statement to PDF.
         
-        Requirements: 3.5 - Export to PDF format (placeholder)
+        Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
         """
         if not self.selected_customer:
             MessageDialog.warning(self, "تنبيه", "يرجى اختيار العميل أولاً")
             return
         
-        MessageDialog.info(self, "معلومات", "تصدير PDF قيد التطوير")
+        if not self.transactions:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
+            return
+        
+        try:
+            # Define columns for export
+            columns = [
+                ('date', 'التاريخ'),
+                ('type_display', 'النوع'),
+                ('reference', 'المرجع'),
+                ('description', 'البيان'),
+                ('debit', 'مدين'),
+                ('credit', 'دائن'),
+                ('balance', 'الرصيد')
+            ]
+            
+            # Prepare data with display values
+            export_data = []
+            for trans in self.transactions:
+                trans_type = trans.get('type', '')
+                type_display = self._get_transaction_type_display(trans_type)
+                
+                export_data.append({
+                    'date': trans.get('date', ''),
+                    'type_display': type_display,
+                    'reference': trans.get('reference', ''),
+                    'description': trans.get('description', ''),
+                    'debit': float(trans.get('debit', 0)),
+                    'credit': float(trans.get('credit', 0)),
+                    'balance': float(trans.get('balance', 0))
+                })
+            
+            # Generate filename with customer name and date
+            customer_name = self.selected_customer.get('name', 'عميل')
+            filename = f"كشف_حساب_{customer_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+            
+            # Prepare summary data
+            opening = float(self.statement_data.get('opening_balance', 0))
+            closing = float(self.statement_data.get('closing_balance', 0))
+            total_debit = float(self.statement_data.get('total_invoices', 0))
+            total_payments = float(self.statement_data.get('total_payments', 0))
+            total_returns = float(self.statement_data.get('total_returns', 0))
+            
+            summary_data = {
+                'اسم العميل': self.selected_customer.get('name', ''),
+                'كود العميل': self.selected_customer.get('code', ''),
+                'الرصيد الافتتاحي': f"{opening:,.2f} ل.س",
+                'إجمالي المدين': f"{total_debit:,.2f} ل.س",
+                'إجمالي الدائن': f"{(total_payments + total_returns):,.2f} ل.س",
+                'الرصيد الختامي': f"{closing:,.2f} ل.س"
+            }
+            
+            # Get date range
+            start_date = self.from_date.date().toString('yyyy-MM-dd')
+            end_date = self.to_date.date().toString('yyyy-MM-dd')
+            
+            # Export to PDF
+            success = ExportService.export_to_pdf(
+                data=export_data,
+                columns=columns,
+                filename=filename,
+                title="كشف حساب العميل",
+                parent=self,
+                summary=summary_data,
+                date_range=(start_date, end_date)
+            )
+            
+            if success:
+                MessageDialog.info(self, "نجاح", "تم تصدير الكشف بنجاح")
+                
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل تصدير الكشف: {str(e)}")
     
     def _print_statement(self):
-        """Print the statement (placeholder)."""
+        """
+        Print the customer statement.
+        
+        Requirements: 5.1, 5.2, 5.3, 5.4, 5.5
+        """
         if not self.selected_customer:
             MessageDialog.warning(self, "تنبيه", "يرجى اختيار العميل أولاً")
             return
         
-        MessageDialog.info(self, "معلومات", "الطباعة قيد التطوير")
+        if not self.transactions:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للطباعة")
+            return
+        
+        try:
+            # Prepare customer info
+            customer_info = {
+                'name': self.selected_customer.get('name', ''),
+                'code': self.selected_customer.get('code', '')
+            }
+            
+            # Get date range
+            start_date = self.from_date.date().toString('yyyy-MM-dd')
+            end_date = self.to_date.date().toString('yyyy-MM-dd')
+            
+            # Generate HTML content for printing
+            html_content = ExportService.generate_statement_html(
+                customer_info=customer_info,
+                statement_data=self.statement_data,
+                transactions=self.transactions,
+                date_range=(start_date, end_date)
+            )
+            
+            # Print the document
+            ExportService.print_document(
+                html_content=html_content,
+                parent=self,
+                title=f"كشف حساب - {customer_info['name']}"
+            )
+            
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل الطباعة: {str(e)}")

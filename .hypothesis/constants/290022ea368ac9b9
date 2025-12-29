@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\purchases\migrations\0002_purchase_order_item_units.py
+# hypothesis_version: 6.148.8
+
+['0.0000', '0001_initial', 'base_quantity', 'inventory', 'product_unit', 'purchase_items', 'purchaseorderitem', 'purchases', 'وحدة المنتج']

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\settings_views.py
+# hypothesis_version: 6.148.8
+
+[400, 404, 'INVALID_INPUT', 'VALIDATION_ERROR', 'amount', 'code', 'converted_amount', 'count', 'description', 'detail', 'errors', 'exchange_rate', 'from_currency', 'get', 'is_enabled', 'key', 'post', 'rate', 'settings', 'status', 'to_currency', 'updated', 'value', 'العملة غير موجودة', 'بيانات غير صالحة', 'سعر الصرف غير صالح', 'لا توجد عملة أساسية']

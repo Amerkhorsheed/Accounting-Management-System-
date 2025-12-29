@@ -6,11 +6,34 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
+from django_filters import rest_framework as filters
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.shortcuts import get_object_or_404
 
 from apps.core.decorators import handle_view_error
 from .models import Category, Unit, ProductUnit, Warehouse, Product, Stock, StockMovement
+
+
+class StockMovementFilter(filters.FilterSet):
+    """
+    Custom FilterSet for StockMovement with date range filtering.
+    
+    Supports filtering by:
+    - product: Filter by product ID
+    - warehouse: Filter by warehouse ID
+    - movement_type: Filter by movement type (in, out, adjustment, transfer, return, damage)
+    - source_type: Filter by source type (purchase, sale, adjustment, transfer, opening, return)
+    - date_from: Filter movements from this date (inclusive)
+    - date_to: Filter movements up to this date (inclusive)
+    
+    Requirements: 6.2 - Provide filtering by product, warehouse, movement type, and date range
+    """
+    date_from = filters.DateFilter(field_name='created_at', lookup_expr='date__gte')
+    date_to = filters.DateFilter(field_name='created_at', lookup_expr='date__lte')
+    
+    class Meta:
+        model = StockMovement
+        fields = ['product', 'warehouse', 'movement_type', 'source_type', 'date_from', 'date_to']
 from .serializers import (
     CategorySerializer, CategoryTreeSerializer,
     UnitSerializer, UnitCreateSerializer,
@@ -36,8 +59,37 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ordering = ['sort_order', 'name']
 
     def destroy(self, request, *args, **kwargs):
-        """Soft delete the category instead of hard delete."""
+        """
+        Soft delete the category if not in use.
+        
+        Requirements: 8.4, 8.5 - Show confirmation dialog, prevent deletion if has products
+        """
         instance = self.get_object()
+        
+        # Check if category has products
+        products_count = instance.products.filter(is_deleted=False).count()
+        if products_count > 0:
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف الفئة لأنها تحتوي على منتجات',
+                    'code': 'CATEGORY_HAS_PRODUCTS',
+                    'products_count': products_count
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if category has child categories
+        children_count = instance.children.filter(is_deleted=False).count()
+        if children_count > 0:
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف الفئة لأنها تحتوي على فئات فرعية',
+                    'code': 'CATEGORY_HAS_CHILDREN',
+                    'children_count': children_count
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -298,8 +350,55 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         Override destroy to perform soft delete instead of hard delete.
         Sets is_deleted=True and records deletion metadata.
+        
+        Requirements: 2.4, 2.5 - Prevent deletion if product has stock movements or invoice items
         """
         instance = self.get_object()
+        
+        # Check if product has stock movements
+        stock_movements_count = StockMovement.objects.filter(product=instance).count()
+        if stock_movements_count > 0:
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف المنتج لأنه يحتوي على حركات مخزون',
+                    'code': 'PRODUCT_HAS_MOVEMENTS',
+                    'movements_count': stock_movements_count
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if product has invoice items
+        from apps.sales.models import InvoiceItem
+        invoice_items_count = InvoiceItem.objects.filter(
+            product=instance,
+            is_deleted=False
+        ).count()
+        if invoice_items_count > 0:
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف المنتج لأنه مرتبط بفواتير',
+                    'code': 'PRODUCT_HAS_INVOICES',
+                    'invoices_count': invoice_items_count
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if product has purchase order items
+        from apps.purchases.models import PurchaseOrderItem
+        po_items_count = PurchaseOrderItem.objects.filter(
+            product=instance,
+            is_deleted=False
+        ).count()
+        if po_items_count > 0:
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف المنتج لأنه مرتبط بأوامر شراء',
+                    'code': 'PRODUCT_HAS_PURCHASE_ORDERS',
+                    'purchase_orders_count': po_items_count
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -393,7 +492,16 @@ class StockViewSet(viewsets.ModelViewSet):
 
 
 class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for viewing stock movements (read-only)."""
+    """
+    ViewSet for viewing stock movements (read-only).
+    
+    Provides filtering by product, warehouse, movement type, source type, and date range.
+    
+    Requirements:
+    - 6.1: Display stock movements list with columns (date, product, warehouse, type, quantity, balance before, balance after, reference)
+    - 6.2: Provide filtering by product, warehouse, movement type, and date range
+    - 6.3: Display full details including source document reference
+    """
     
     queryset = StockMovement.objects.select_related(
         'product', 'warehouse', 'created_by'
@@ -401,7 +509,7 @@ class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StockMovementSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['product', 'warehouse', 'movement_type', 'source_type']
+    filterset_class = StockMovementFilter
     search_fields = ['product__name', 'reference_number', 'notes']
     ordering_fields = ['created_at', 'quantity']
     ordering = ['-created_at']

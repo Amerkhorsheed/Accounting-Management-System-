@@ -2123,3 +2123,669 @@ Traceback (most recent call last):
   File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
     raise ApiException(
 src.services.api.ApiException: العنصر المطلوب غير موجود: المنتج غير موجود
+[2025-12-28 18:47:40] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في الخادم: حدث خطأ في قاعدة البيانات أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 500
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في الخادم: حدث خطأ في قاعدة البيانات أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني.
+[2025-12-28 18:47:51] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في الخادم: حدث خطأ في قاعدة البيانات أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 500
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في الخادم: حدث خطأ في قاعدة البيانات أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى أو التواصل مع الدعم الفني.
+[2025-12-28 22:25:42] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ConnectionException] فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ConnectionException
+  Error Code: CONNECTION_ERROR
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 198, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
+    raise err
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 496, in _make_request
+    conn.request(
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 400, in request
+    self.endheaders()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1326, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1085, in _send_output
+    self.send(msg)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1029, in send
+    self.connect()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 238, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 213, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPConnection object at 0x000002414637CD10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\retry.py", line 515, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002414637CD10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\services\api.py", line 112, in _request
+    response = requests.request(
+               ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002414637CD10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 143, in _request
+    raise ConnectionException("فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.")
+src.utils.exceptions.ConnectionException: فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+[2025-12-28 22:25:42] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [ConnectionException] فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+Context:
+  Function: refresh
+  Class: DashboardView
+  View: 
+  Error Type: ConnectionException
+  Error Code: CONNECTION_ERROR
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 198, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
+    raise err
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 496, in _make_request
+    conn.request(
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 400, in request
+    self.endheaders()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1326, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1085, in _send_output
+    self.send(msg)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1029, in send
+    self.connect()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 238, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 213, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPConnection object at 0x000002414637CD10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\retry.py", line 515, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002414637CD10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\services\api.py", line 112, in _request
+    response = requests.request(
+               ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000002414637CD10>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\dashboard\__init__.py", line 273, in refresh
+    data = api.get_dashboard()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 558, in get_dashboard
+    return self.get('reports/dashboard/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 143, in _request
+    raise ConnectionException("فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.")
+src.utils.exceptions.ConnectionException: فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+[2025-12-28 22:55:21] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+[2025-12-28 22:56:23] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+[2025-12-28 22:58:58] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+[2025-12-28 23:12:51] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+[2025-12-28 23:18:30] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] خطأ في البيانات المدخلة: الكمية المتاحة من 'BRO' غير كافية لإتمام العملية. الكمية المطلوبة: 2، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: الكمية المتاحة من 'BRO' غير كافية لإتمام العملية. الكمية المطلوبة: 2، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+[2025-12-28 23:20:30] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ConnectionException] فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ConnectionException
+  Error Code: CONNECTION_ERROR
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 198, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
+    raise err
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 496, in _make_request
+    conn.request(
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 400, in request
+    self.endheaders()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1326, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1085, in _send_output
+    self.send(msg)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1029, in send
+    self.connect()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 238, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 213, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPConnection object at 0x00000273AC7FB3B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\retry.py", line 515, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000273AC7FB3B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\services\api.py", line 112, in _request
+    response = requests.request(
+               ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000273AC7FB3B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 143, in _request
+    raise ConnectionException("فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.")
+src.utils.exceptions.ConnectionException: فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+[2025-12-28 23:20:30] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [ConnectionException] فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+Context:
+  Function: refresh
+  Class: DashboardView
+  View: 
+  Error Type: ConnectionException
+  Error Code: CONNECTION_ERROR
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 198, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
+    raise err
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 793, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 496, in _make_request
+    conn.request(
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 400, in request
+    self.endheaders()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1326, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1085, in _send_output
+    self.send(msg)
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\http\client.py", line 1029, in send
+    self.connect()
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 238, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connection.py", line 213, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPConnection object at 0x00000273AC7FB3B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\connectionpool.py", line 847, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\urllib3\util\retry.py", line 515, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000273AC7FB3B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\services\api.py", line 112, in _request
+    response = requests.request(
+               ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\requests\adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/v1/reports/dashboard/ (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000273AC7FB3B0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\dashboard\__init__.py", line 273, in refresh
+    data = api.get_dashboard()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 558, in get_dashboard
+    return self.get('reports/dashboard/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 143, in _request
+    raise ConnectionException("فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.")
+src.utils.exceptions.ConnectionException: فشل الاتصال بالخادم. يرجى التحقق من اتصال الشبكة.
+[2025-12-28 23:29:17] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] خطأ في البيانات المدخلة: الكمية المتاحة من 'ttt' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: الكمية المتاحة من 'ttt' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+[2025-12-28 23:41:27] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+[2025-12-29 00:36:03] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: العميل: لا يمكن لهذا الحقل ان يكون فارغاً null.
+[2025-12-29 20:45:59] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] خطأ في البيانات المدخلة: الكمية المتاحة من 'ttt' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: الكمية المتاحة من 'ttt' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+[2025-12-29 20:46:18] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] خطأ في البيانات المدخلة: الكمية المتاحة من 'mast' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: الكمية المتاحة من 'mast' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.

@@ -170,3 +170,72 @@ class AgingReportView(views.APIView):
         
         data = ReportService.get_aging_report(as_of_date=as_of_date)
         return Response(data)
+
+
+class SuppliersReportView(views.APIView):
+    """
+    Suppliers report endpoint.
+    
+    Returns supplier statistics including:
+    - Total suppliers count
+    - Active suppliers count
+    - Total payables
+    - Supplier list with purchase totals and outstanding balances
+    
+    Requirements: 1.1-1.6
+    """
+    
+    permission_classes = [IsAuthenticated]
+
+    @handle_view_error
+    def get(self, request):
+        # Parse optional date range parameters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if end_date:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        data = ReportService.get_suppliers_report(
+            start_date=start_date,
+            end_date=end_date
+        )
+        return Response(data)
+
+
+class ExpensesReportView(views.APIView):
+    """
+    Expenses report endpoint.
+    
+    Returns expense analysis including:
+    - Total expenses
+    - Breakdown by category with percentages
+    - Individual expense list
+    
+    Requirements: 2.1-2.6
+    """
+    
+    permission_classes = [IsAuthenticated]
+
+    @handle_view_error
+    def get(self, request):
+        # Parse optional date range and category parameters
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        category_id = request.query_params.get('category')
+        
+        if start_date:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if end_date:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        if category_id:
+            category_id = int(category_id)
+        
+        data = ReportService.get_expenses_report(
+            start_date=start_date,
+            end_date=end_date,
+            category_id=category_id
+        )
+        return Response(data)

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\sales\migrations\0003_invoiceitem_units.py
+# hypothesis_version: 6.148.8
+
+['0.0000', 'base_quantity', 'inventory', 'invoice_items', 'invoiceitem', 'product_unit', 'sales', 'وحدة المنتج']

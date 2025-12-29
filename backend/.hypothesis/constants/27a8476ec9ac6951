@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\migrations\0001_initial.py
+# hypothesis_version: 6.148.8
+
+[100, 255, '-is_default', '-is_primary', '0.00', '1.0000', 'Currency', 'ID', 'SystemSettings', 'TaxRate', 'code', 'created_at', 'decimal_places', 'description', 'exchange_rate', 'id', 'is_active', 'is_default', 'is_primary', 'key', 'name', 'name_en', 'ordering', 'rate', 'symbol', 'updated_at', 'value', 'verbose_name', 'verbose_name_plural', 'إعداد النظام', 'إعدادات النظام', 'اسم الضريبة', 'اسم العملة', 'الاسم بالإنجليزية', 'الافتراضي', 'الرمز', 'العملات', 'العملة الأساسية', 'القيمة', 'المفتاح', 'الوصف', 'تاريخ الإنشاء', 'تاريخ التحديث', 'رمز الضريبة', 'رمز العملة', 'سعر الصرف', 'عدد الخانات العشرية', 'عملة', 'معدل الضريبة', 'معدلات الضريبة', 'نسبة الضريبة %', 'نشط']

@@ -1,7 +1,7 @@
 """
 Units Management View - Settings Page for Unit Management
 
-Requirements: 6.1, 6.2, 6.3, 6.4, 6.5 - Unit management interface
+Requirements: 9.1, 9.2, 9.3, 9.4, 9.5 - Full CRUD for Units
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -23,7 +23,7 @@ class UnitDialog(QDialog):
     """
     Dialog for creating/editing units.
     
-    Requirements: 6.3, 6.4, 6.5 - Add/edit dialog with validation and Arabic support
+    Requirements: 9.2, 9.3 - Add/edit dialog with name, name_en, symbol
     """
     
     saved = Signal(dict)
@@ -59,17 +59,6 @@ class UnitDialog(QDialog):
             self.name_field.set_value(self.data['name'])
         form_layout.addWidget(self.name_field)
         
-        # Symbol field - Required
-        self.symbol_field = FormField(
-            label='الرمز',
-            field_type='text',
-            required=True,
-            placeholder='مثال: كروز، علبة، قطعة'
-        )
-        if 'symbol' in self.data:
-            self.symbol_field.set_value(self.data['symbol'])
-        form_layout.addWidget(self.symbol_field)
-        
         # English name field - Optional
         self.name_en_field = FormField(
             label='الاسم بالإنجليزية',
@@ -80,6 +69,17 @@ class UnitDialog(QDialog):
         if 'name_en' in self.data:
             self.name_en_field.set_value(self.data['name_en'] or '')
         form_layout.addWidget(self.name_en_field)
+        
+        # Symbol field - Required
+        self.symbol_field = FormField(
+            label='الرمز',
+            field_type='text',
+            required=True,
+            placeholder='مثال: كروز، علبة، قطعة'
+        )
+        if 'symbol' in self.data:
+            self.symbol_field.set_value(self.data['symbol'])
+        form_layout.addWidget(self.symbol_field)
         
         # Active checkbox
         self.is_active_field = FormField(
@@ -128,8 +128,8 @@ class UnitDialog(QDialog):
         # Collect data
         result = {
             'name': self.name_field.get_value(),
-            'symbol': self.symbol_field.get_value(),
             'name_en': self.name_en_field.get_value() or None,
+            'symbol': self.symbol_field.get_value(),
             'is_active': self.is_active_field.get_value(),
         }
         
@@ -145,7 +145,7 @@ class UnitsManagementView(QWidget):
     """
     Units management view for settings.
     
-    Requirements: 6.1, 6.2 - Settings page with table display
+    Requirements: 9.1 - Display units list with name, symbol, product count columns
     """
     
     def __init__(self, parent=None):
@@ -177,11 +177,12 @@ class UnitsManagementView(QWidget):
         layout.addWidget(desc)
         
         # Units table
+        # Requirements: 9.1 - Show name, symbol, product count columns
         columns = [
             {'key': 'name', 'label': 'اسم الوحدة', 'type': 'text'},
             {'key': 'symbol', 'label': 'الرمز', 'type': 'text'},
-            {'key': 'name_en', 'label': 'الاسم بالإنجليزية', 'type': 'text'},
-            {'key': 'is_active', 'label': 'الحالة', 'type': 'status'},
+            {'key': 'products_count', 'label': 'عدد المنتجات', 'type': 'text'},
+            {'key': 'is_active_display', 'label': 'الحالة', 'type': 'text'},
         ]
         
         self.table = DataTable(columns)
@@ -190,13 +191,17 @@ class UnitsManagementView(QWidget):
         self.table.add_btn.clicked.connect(self.add_unit)
         self.table.action_clicked.connect(self.on_action)
         self.table.row_double_clicked.connect(self.edit_unit)
+        self.table.page_changed.connect(self.on_page_changed)
         
         layout.addWidget(self.table)
         
     @handle_ui_error
     def refresh(self):
         """Refresh units data from API."""
-        response = api.get('inventory/units/')
+        # Get pagination params
+        params = self.table.get_pagination_params()
+        
+        response = api.get('inventory/units/', params)
         
         # Handle paginated response
         if isinstance(response, dict) and 'results' in response:
@@ -208,9 +213,13 @@ class UnitsManagementView(QWidget):
         
         # Format is_active for display
         for unit in units:
-            unit['is_active'] = 'نشط' if unit.get('is_active', True) else 'غير نشط'
+            unit['is_active_display'] = 'نشط' if unit.get('is_active', True) else 'غير نشط'
             
         self.table.set_data(units, total)
+    
+    def on_page_changed(self, page: int, page_size: int):
+        """Handle page change."""
+        self.refresh()
         
     def add_unit(self):
         """Show add unit dialog."""
@@ -222,7 +231,7 @@ class UnitsManagementView(QWidget):
         """Show edit unit dialog."""
         # Convert display status back to boolean for editing
         edit_data = data.copy()
-        edit_data['is_active'] = data.get('is_active') == 'نشط'
+        edit_data['is_active'] = data.get('is_active_display') == 'نشط'
         
         dialog = UnitDialog("تعديل الوحدة", edit_data, parent=self)
         dialog.saved.connect(lambda d: self.update_unit(data.get('id'), d))
@@ -250,7 +259,7 @@ class UnitsManagementView(QWidget):
         if data.get('name_en'):
             create_data['name_en'] = data['name_en']
             
-        api.post('inventory/units/', create_data)
+        api.create_unit(create_data)
         MessageDialog.success(self, "نجاح", "تم إضافة الوحدة بنجاح")
         self.refresh()
         
@@ -266,21 +275,37 @@ class UnitsManagementView(QWidget):
         # Include name_en (can be null)
         update_data['name_en'] = data.get('name_en') or None
             
-        api.patch(f'inventory/units/{unit_id}/', update_data)
+        api.update_unit(unit_id, update_data)
         MessageDialog.success(self, "نجاح", "تم تحديث الوحدة بنجاح")
         self.refresh()
         
     @handle_ui_error
     def delete_unit(self, data: dict):
-        """Delete unit via API."""
+        """
+        Delete unit via API.
+        
+        Requirements: 9.4, 9.5 - Show confirmation dialog, prevent deletion if used by products
+        """
+        products_count = data.get('products_count', 0)
+        
+        # Show warning if unit is used by products
+        if products_count > 0:
+            MessageDialog.business_error(
+                self,
+                "لا يمكن الحذف",
+                f"لا يمكن حذف هذه الوحدة لأنها مستخدمة في {products_count} منتج.",
+                "يجب إزالة الوحدة من جميع المنتجات قبل حذفها."
+            )
+            return
+        
         dialog = ConfirmDialog(
             "حذف الوحدة",
-            f"هل أنت متأكد من حذف الوحدة '{data.get('name')}'؟\n\nلا يمكن حذف الوحدات المستخدمة في المنتجات.",
+            f"هل أنت متأكد من حذف الوحدة '{data.get('name')}'؟",
             parent=self
         )
         if dialog.exec():
             try:
-                api.delete(f'inventory/units/{data.get("id")}/')
+                api.delete_unit(data.get('id'))
                 MessageDialog.success(self, "نجاح", "تم حذف الوحدة بنجاح")
                 self.refresh()
             except ApiException as e:
@@ -294,3 +319,7 @@ class UnitsManagementView(QWidget):
                     )
                 else:
                     raise
+
+
+# Alias for backward compatibility
+UnitsView = UnitsManagementView

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\expenses\urls.py
+# hypothesis_version: 6.148.8
+
+['categories', 'expense', 'expenses']

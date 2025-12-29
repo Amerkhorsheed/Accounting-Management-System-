@@ -3,6 +3,7 @@ Inventory Views - Products Management
 
 Requirements: 4.1, 4.2 - Error handling for CRUD operations and form submissions
 Requirements: 2.1 - Product-unit association management
+Requirements: 6.1, 6.2, 6.3, 6.4 - Stock Movements View
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -19,6 +20,9 @@ from ...widgets.dialogs import MessageDialog, ConfirmDialog
 from ...widgets.product_units import ProductUnitConfigWidget
 from ...services.api import api, ApiException
 from ...utils.error_handler import handle_ui_error
+
+# Import StockMovementsView from submodule
+from .stock_movements import StockMovementsView, StockMovementDetailsDialog
 
 
 class ProductDialog(QDialog):

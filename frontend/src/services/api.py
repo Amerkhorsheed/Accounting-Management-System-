@@ -631,6 +631,694 @@ class ApiService:
         if as_of_date:
             params['as_of_date'] = as_of_date
         return self.get('reports/aging/', params)
+    
+    def get_suppliers_report(
+        self,
+        start_date: str = None,
+        end_date: str = None
+    ) -> Dict:
+        """
+        Get suppliers report with supplier statistics and purchase history.
+        
+        Args:
+            start_date: Optional filter start date (YYYY-MM-DD)
+            end_date: Optional filter end date (YYYY-MM-DD)
+            
+        Returns:
+            Report with:
+            - summary: total_suppliers, active_suppliers, total_payables, total_purchases
+            - suppliers: list of suppliers with purchase totals and outstanding balances
+            
+        Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6
+        """
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        return self.get('reports/suppliers/', params)
+    
+    def get_expenses_report(
+        self,
+        start_date: str = None,
+        end_date: str = None,
+        category_id: int = None
+    ) -> Dict:
+        """
+        Get expenses report with expense analysis by category.
+        
+        Args:
+            start_date: Optional filter start date (YYYY-MM-DD)
+            end_date: Optional filter end date (YYYY-MM-DD)
+            category_id: Optional filter by expense category ID
+            
+        Returns:
+            Report with:
+            - summary: total_expenses, expense_count, average_expense
+            - by_category: list of categories with totals and percentages
+            - expenses: list of individual expenses with details
+            
+        Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
+        """
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        if category_id:
+            params['category'] = category_id
+        return self.get('reports/expenses/', params)
+    
+    # =========================================================================
+    # Stock Movements API Methods
+    # Requirements: 6.1, 6.2
+    # =========================================================================
+    
+    def get_stock_movements(self, params: Dict = None) -> Dict:
+        """
+        Get stock movements with optional filtering.
+        
+        Args:
+            params: Optional filter parameters:
+                - product: Filter by product ID
+                - warehouse: Filter by warehouse ID
+                - movement_type: Filter by type (in, out, adjustment, transfer, return, damage)
+                - source_type: Filter by source (purchase, sale, adjustment, transfer, opening, return)
+                - date_from: Filter from date (YYYY-MM-DD)
+                - date_to: Filter to date (YYYY-MM-DD)
+                - page: Page number for pagination
+                - page_size: Number of items per page
+                
+        Returns:
+            Paginated list of stock movements with columns:
+            date, product, warehouse, type, quantity, balance_before, balance_after, reference
+            
+        Requirements: 6.1, 6.2
+        """
+        return self.get('inventory/movements/', params)
+    
+    def get_stock_movement(self, movement_id: int) -> Dict:
+        """
+        Get stock movement details.
+        
+        Args:
+            movement_id: ID of the stock movement
+            
+        Returns:
+            Full movement details including source document reference
+            
+        Requirements: 6.3
+        """
+        return self.get(f'inventory/movements/{movement_id}/')
+    
+    # =========================================================================
+    # Sales Returns API Methods
+    # Requirements: 5.1, 5.9
+    # =========================================================================
+    
+    def create_sales_return(self, invoice_id: int, data: Dict) -> Dict:
+        """
+        Create a sales return for an invoice.
+        
+        Args:
+            invoice_id: ID of the original invoice
+            data: Return data containing:
+                - return_date: Date of return (YYYY-MM-DD)
+                - reason: Required - Reason for return
+                - notes: Optional notes
+                - items: List of items to return:
+                    - invoice_item_id: ID of the invoice item
+                    - quantity: Quantity to return
+                    - reason: Optional reason for this item
+                    
+        Returns:
+            Created sales return with full details
+            
+        Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8
+        """
+        return self.post(f'sales/invoices/{invoice_id}/return_items/', data)
+    
+    def get_sales_returns(self, params: Dict = None) -> Dict:
+        """
+        Get list of sales returns with optional filtering.
+        
+        Args:
+            params: Optional filter parameters:
+                - original_invoice: Filter by original invoice ID
+                - page: Page number for pagination
+                - page_size: Number of items per page
+                - search: Search by return number, invoice number, or reason
+                
+        Returns:
+            Paginated list of sales returns with columns:
+            number, original_invoice, date, total, reason
+            
+        Requirements: 5.9
+        """
+        return self.get('sales/returns/', params)
+    
+    def get_sales_return(self, return_id: int) -> Dict:
+        """
+        Get sales return details.
+        
+        Args:
+            return_id: ID of the sales return
+            
+        Returns:
+            Full sales return details with items
+            
+        Requirements: 5.9
+        """
+        return self.get(f'sales/returns/{return_id}/')
+    
+    # =========================================================================
+    # Invoice Cancel API Method
+    # Requirements: 4.4
+    # =========================================================================
+    
+    def cancel_invoice(self, invoice_id: int, reason: str) -> Dict:
+        """
+        Cancel an invoice and reverse all effects.
+        
+        Args:
+            invoice_id: ID of the invoice to cancel
+            reason: Required - Reason for cancellation
+            
+        Returns:
+            Updated invoice with cancelled status
+            
+        Requirements: 4.4, 4.5
+        - Validates invoice can be cancelled (confirmed, paid, or partial status)
+        - Reverses stock movements (adds stock back)
+        - Reverses customer balance changes
+        - Updates invoice status to cancelled
+        """
+        return self.post(f'sales/invoices/{invoice_id}/cancel/', {'reason': reason})
+    
+    # =========================================================================
+    # Categories CRUD API Methods
+    # Requirements: 8.2, 8.3, 8.4
+    # =========================================================================
+    
+    def create_category(self, data: Dict) -> Dict:
+        """
+        Create a new product category.
+        
+        Args:
+            data: Category data containing:
+                - name: Category name (Arabic)
+                - name_en: Optional English name
+                - parent: Optional parent category ID
+                - description: Optional description
+                
+        Returns:
+            Created category
+            
+        Requirements: 8.2
+        """
+        return self.post('inventory/categories/', data)
+    
+    def update_category(self, category_id: int, data: Dict) -> Dict:
+        """
+        Update an existing category.
+        
+        Args:
+            category_id: ID of the category to update
+            data: Updated category data
+            
+        Returns:
+            Updated category
+            
+        Requirements: 8.3
+        """
+        return self.patch(f'inventory/categories/{category_id}/', data)
+    
+    def delete_category(self, category_id: int) -> Dict:
+        """
+        Delete a category (soft delete).
+        
+        Args:
+            category_id: ID of the category to delete
+            
+        Returns:
+            Empty response on success
+            
+        Raises:
+            ApiException: If category has products (deletion protected)
+            
+        Requirements: 8.4, 8.5
+        """
+        return self.delete(f'inventory/categories/{category_id}/')
+    
+    def get_category(self, category_id: int) -> Dict:
+        """
+        Get category details.
+        
+        Args:
+            category_id: ID of the category
+            
+        Returns:
+            Category details
+        """
+        return self.get(f'inventory/categories/{category_id}/')
+    
+    # =========================================================================
+    # Units CRUD API Methods
+    # Requirements: 9.2, 9.3, 9.4
+    # =========================================================================
+    
+    def get_units(self, params: Dict = None) -> List[Dict]:
+        """
+        Get list of units.
+        
+        Args:
+            params: Optional filter parameters
+            
+        Returns:
+            List of units
+            
+        Requirements: 9.1
+        """
+        return self.get('inventory/units/', params)
+    
+    def get_unit(self, unit_id: int) -> Dict:
+        """
+        Get unit details.
+        
+        Args:
+            unit_id: ID of the unit
+            
+        Returns:
+            Unit details
+        """
+        return self.get(f'inventory/units/{unit_id}/')
+    
+    def create_unit(self, data: Dict) -> Dict:
+        """
+        Create a new unit of measure.
+        
+        Args:
+            data: Unit data containing:
+                - name: Unit name (Arabic)
+                - name_en: Optional English name
+                - symbol: Unit symbol
+                
+        Returns:
+            Created unit
+            
+        Requirements: 9.2
+        """
+        return self.post('inventory/units/', data)
+    
+    def update_unit(self, unit_id: int, data: Dict) -> Dict:
+        """
+        Update an existing unit.
+        
+        Args:
+            unit_id: ID of the unit to update
+            data: Updated unit data
+            
+        Returns:
+            Updated unit
+            
+        Requirements: 9.3
+        """
+        return self.patch(f'inventory/units/{unit_id}/', data)
+    
+    def delete_unit(self, unit_id: int) -> Dict:
+        """
+        Delete a unit (soft delete).
+        
+        Args:
+            unit_id: ID of the unit to delete
+            
+        Returns:
+            Empty response on success
+            
+        Raises:
+            ApiException: If unit is used by products (deletion protected)
+            
+        Requirements: 9.4, 9.5
+        """
+        return self.delete(f'inventory/units/{unit_id}/')
+    
+    # =========================================================================
+    # Warehouses CRUD API Methods
+    # Requirements: 10.2, 10.3, 10.4
+    # =========================================================================
+    
+    def get_warehouse(self, warehouse_id: int) -> Dict:
+        """
+        Get warehouse details.
+        
+        Args:
+            warehouse_id: ID of the warehouse
+            
+        Returns:
+            Warehouse details
+        """
+        return self.get(f'inventory/warehouses/{warehouse_id}/')
+    
+    def create_warehouse(self, data: Dict) -> Dict:
+        """
+        Create a new warehouse.
+        
+        Args:
+            data: Warehouse data containing:
+                - code: Warehouse code
+                - name: Warehouse name
+                - address: Optional address
+                - is_default: Whether this is the default warehouse
+                
+        Returns:
+            Created warehouse
+            
+        Requirements: 10.2
+        """
+        return self.post('inventory/warehouses/', data)
+    
+    def update_warehouse(self, warehouse_id: int, data: Dict) -> Dict:
+        """
+        Update an existing warehouse.
+        
+        Args:
+            warehouse_id: ID of the warehouse to update
+            data: Updated warehouse data
+            
+        Returns:
+            Updated warehouse
+            
+        Requirements: 10.3
+        """
+        return self.patch(f'inventory/warehouses/{warehouse_id}/', data)
+    
+    def delete_warehouse(self, warehouse_id: int) -> Dict:
+        """
+        Delete a warehouse (soft delete).
+        
+        Args:
+            warehouse_id: ID of the warehouse to delete
+            
+        Returns:
+            Empty response on success
+            
+        Raises:
+            ApiException: If warehouse has stock (deletion protected)
+            
+        Requirements: 10.4, 10.5
+        """
+        return self.delete(f'inventory/warehouses/{warehouse_id}/')
+    
+    # =========================================================================
+    # Expense Categories CRUD API Methods
+    # Requirements: 11.2, 11.3, 11.4
+    # =========================================================================
+    
+    def get_expense_category(self, category_id: int) -> Dict:
+        """
+        Get expense category details.
+        
+        Args:
+            category_id: ID of the expense category
+            
+        Returns:
+            Expense category details
+        """
+        return self.get(f'expenses/categories/{category_id}/')
+    
+    def create_expense_category(self, data: Dict) -> Dict:
+        """
+        Create a new expense category.
+        
+        Args:
+            data: Category data containing:
+                - name: Category name (Arabic)
+                - name_en: Optional English name
+                - parent: Optional parent category ID
+                - description: Optional description
+                
+        Returns:
+            Created expense category
+            
+        Requirements: 11.2
+        """
+        return self.post('expenses/categories/', data)
+    
+    def update_expense_category(self, category_id: int, data: Dict) -> Dict:
+        """
+        Update an existing expense category.
+        
+        Args:
+            category_id: ID of the expense category to update
+            data: Updated category data
+            
+        Returns:
+            Updated expense category
+            
+        Requirements: 11.3
+        """
+        return self.patch(f'expenses/categories/{category_id}/', data)
+    
+    def delete_expense_category(self, category_id: int) -> Dict:
+        """
+        Delete an expense category (soft delete).
+        
+        Args:
+            category_id: ID of the expense category to delete
+            
+        Returns:
+            Empty response on success
+            
+        Raises:
+            ApiException: If category has expenses (deletion protected)
+            
+        Requirements: 11.4, 11.5
+        """
+        return self.delete(f'expenses/categories/{category_id}/')
+    
+    # =========================================================================
+    # Expenses CRUD API Methods (Enhanced)
+    # Requirements: 7.3, 7.4
+    # =========================================================================
+    
+    def get_expense(self, expense_id: int) -> Dict:
+        """
+        Get expense details.
+        
+        Args:
+            expense_id: ID of the expense
+            
+        Returns:
+            Expense details
+        """
+        return self.get(f'expenses/expenses/{expense_id}/')
+    
+    def update_expense(self, expense_id: int, data: Dict) -> Dict:
+        """
+        Update an existing expense.
+        
+        Args:
+            expense_id: ID of the expense to update
+            data: Updated expense data
+            
+        Returns:
+            Updated expense
+            
+        Requirements: 7.3
+        """
+        return self.patch(f'expenses/expenses/{expense_id}/', data)
+    
+    def delete_expense(self, expense_id: int) -> Dict:
+        """
+        Delete an expense (soft delete).
+        
+        Args:
+            expense_id: ID of the expense to delete
+            
+        Returns:
+            Empty response on success
+            
+        Requirements: 7.4
+        """
+        return self.delete(f'expenses/expenses/{expense_id}/')
+    
+    # =========================================================================
+    # Customers CRUD API Methods (Enhanced)
+    # Requirements: 1.4
+    # =========================================================================
+    
+    def delete_customer(self, customer_id: int) -> Dict:
+        """
+        Delete a customer (soft delete).
+        
+        Args:
+            customer_id: ID of the customer to delete
+            
+        Returns:
+            Empty response on success
+            
+        Raises:
+            ApiException: If customer has outstanding invoices (deletion protected)
+            
+        Requirements: 1.4, 1.5
+        """
+        return self.delete(f'sales/customers/{customer_id}/')
+    
+    # =========================================================================
+    # Suppliers CRUD API Methods (Enhanced)
+    # Requirements: 3.3, 3.4
+    # =========================================================================
+    
+    def get_supplier(self, supplier_id: int) -> Dict:
+        """
+        Get supplier details.
+        
+        Args:
+            supplier_id: ID of the supplier
+            
+        Returns:
+            Supplier details
+        """
+        return self.get(f'purchases/suppliers/{supplier_id}/')
+    
+    def update_supplier(self, supplier_id: int, data: Dict) -> Dict:
+        """
+        Update an existing supplier.
+        
+        Args:
+            supplier_id: ID of the supplier to update
+            data: Updated supplier data
+            
+        Returns:
+            Updated supplier
+            
+        Requirements: 3.3
+        """
+        return self.patch(f'purchases/suppliers/{supplier_id}/', data)
+    
+    def delete_supplier(self, supplier_id: int) -> Dict:
+        """
+        Delete a supplier (soft delete).
+        
+        Args:
+            supplier_id: ID of the supplier to delete
+            
+        Returns:
+            Empty response on success
+            
+        Raises:
+            ApiException: If supplier has purchase orders (deletion protected)
+            
+        Requirements: 3.4, 3.5
+        """
+        return self.delete(f'purchases/suppliers/{supplier_id}/')
+    
+    # =========================================================================
+    # Payments API Methods (Enhanced)
+    # Requirements: 13.1, 13.2, 13.3
+    # =========================================================================
+    
+    def get_payments(self, params: Dict = None) -> Dict:
+        """
+        Get list of payments with optional filtering.
+        
+        Args:
+            params: Optional filter parameters:
+                - customer: Filter by customer ID
+                - payment_method: Filter by payment method
+                - invoice: Filter by invoice ID
+                - page: Page number for pagination
+                - page_size: Number of items per page
+                
+        Returns:
+            Paginated list of payments
+            
+        Requirements: 13.1
+        """
+        return self.get('sales/payments/', params)
+    
+    def get_payment(self, payment_id: int) -> Dict:
+        """
+        Get payment details with allocations.
+        
+        Args:
+            payment_id: ID of the payment
+            
+        Returns:
+            Payment details with allocations list
+            
+        Requirements: 13.3
+        """
+        return self.get(f'sales/payments/{payment_id}/')
+    
+    def create_payment(self, data: Dict) -> Dict:
+        """
+        Create a new payment.
+        
+        Args:
+            data: Payment data containing:
+                - customer: Customer ID
+                - payment_date: Date of payment (YYYY-MM-DD)
+                - amount: Payment amount
+                - payment_method: Payment method (cash, card, bank, check, credit)
+                - reference: Optional reference number
+                - notes: Optional notes
+                - invoice: Optional single invoice ID
+                
+        Returns:
+            Created payment
+            
+        Requirements: 13.2
+        """
+        return self.post('sales/payments/', data)
+    
+    # =========================================================================
+    # Purchase Orders API Methods (Enhanced)
+    # Requirements: 12.2, 12.4
+    # =========================================================================
+    
+    def get_purchase_order(self, order_id: int) -> Dict:
+        """
+        Get purchase order details with items.
+        
+        Args:
+            order_id: ID of the purchase order
+            
+        Returns:
+            Full purchase order details with items
+            
+        Requirements: 12.2
+        """
+        return self.get(f'purchases/orders/{order_id}/')
+    
+    def update_purchase_order(self, order_id: int, data: Dict) -> Dict:
+        """
+        Update a purchase order (only draft status).
+        
+        Args:
+            order_id: ID of the purchase order to update
+            data: Updated order data
+            
+        Returns:
+            Updated purchase order
+            
+        Requirements: 12.3
+        """
+        return self.patch(f'purchases/orders/{order_id}/', data)
+    
+    def mark_purchase_order_ordered(self, order_id: int) -> Dict:
+        """
+        Mark a purchase order as ordered.
+        
+        Args:
+            order_id: ID of the purchase order
+            
+        Returns:
+            Updated purchase order
+            
+        Requirements: 12.4
+        """
+        return self.post(f'purchases/orders/{order_id}/mark_ordered/', {})
 
 
 # Global API instance

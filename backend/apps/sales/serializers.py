@@ -322,6 +322,138 @@ class SalesReturnSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'return_number', 'total_amount', 'created_at']
 
 
+class SalesReturnItemCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating SalesReturn items.
+    
+    Requirements: 5.2, 5.3
+    - Display original invoice items with returnable quantities
+    - Validate return quantity does not exceed available quantity
+    """
+    invoice_item_id = serializers.IntegerField()
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=2)
+    reason = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    
+    def validate_quantity(self, value):
+        """Validate quantity is positive."""
+        from decimal import Decimal
+        if value <= Decimal('0'):
+            raise serializers.ValidationError('الكمية يجب أن تكون أكبر من صفر')
+        return value
+
+
+class SalesReturnCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating SalesReturn.
+    
+    Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8
+    - Create return for confirmed/paid invoices
+    - Validate return quantities
+    - Add returned quantities back to stock
+    - Create stock movement records
+    - Reduce customer balance
+    - Calculate return totals with proportional discounts/taxes
+    - Require reason for return
+    """
+    original_invoice = serializers.PrimaryKeyRelatedField(queryset=Invoice.objects.all())
+    return_date = serializers.DateField()
+    reason = serializers.CharField()
+    notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    items = SalesReturnItemCreateSerializer(many=True)
+    
+    def validate_reason(self, value):
+        """Validate reason is provided (Requirement 5.8)."""
+        if not value or not value.strip():
+            raise serializers.ValidationError('يجب تحديد سبب الإرجاع')
+        return value.strip()
+    
+    def validate_items(self, value):
+        """Validate at least one item is provided."""
+        if not value:
+            raise serializers.ValidationError('يجب تحديد عنصر واحد على الأقل للإرجاع')
+        return value
+    
+    def validate(self, attrs):
+        """
+        Cross-field validation.
+        
+        Requirements: 5.1, 5.3
+        - Validate invoice status (must be confirmed, paid, or partial)
+        - Validate return quantities don't exceed available quantities
+        """
+        from decimal import Decimal
+        from django.db.models import Sum
+        
+        invoice = attrs.get('original_invoice')
+        items = attrs.get('items', [])
+        
+        # Requirement 5.1: Validate invoice status
+        allowed_statuses = [Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL]
+        if invoice.status not in allowed_statuses:
+            raise serializers.ValidationError({
+                'original_invoice': f'لا يمكن إنشاء مرتجع لفاتورة بحالة {invoice.get_status_display()}. يمكن إنشاء مرتجع للفواتير المؤكدة أو المدفوعة فقط.'
+            })
+        
+        # Requirement 5.3: Validate return quantities
+        for item_data in items:
+            invoice_item_id = item_data.get('invoice_item_id')
+            return_quantity = item_data.get('quantity')
+            
+            try:
+                invoice_item = InvoiceItem.objects.get(id=invoice_item_id, invoice=invoice)
+            except InvoiceItem.DoesNotExist:
+                raise serializers.ValidationError({
+                    'items': f'بند الفاتورة رقم {invoice_item_id} غير موجود في هذه الفاتورة'
+                })
+            
+            # Calculate already returned quantity for this item
+            already_returned = SalesReturnItem.objects.filter(
+                invoice_item=invoice_item
+            ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+            
+            available_quantity = invoice_item.quantity - already_returned
+            
+            if return_quantity > available_quantity:
+                raise serializers.ValidationError({
+                    'items': f'كمية الإرجاع ({return_quantity}) تتجاوز الكمية المتاحة للإرجاع ({available_quantity}) للمنتج {invoice_item.product.name}'
+                })
+        
+        return attrs
+    
+    def create(self, validated_data):
+        """
+        Create sales return using SalesService.
+        
+        Requirements: 5.4, 5.5, 5.6, 5.7
+        """
+        from .services import SalesService
+        
+        invoice = validated_data['original_invoice']
+        items_data = validated_data['items']
+        
+        # Transform items data to match SalesService.create_sales_return format
+        items = [
+            {
+                'invoice_item_id': item['invoice_item_id'],
+                'quantity': item['quantity'],
+                'reason': item.get('reason')
+            }
+            for item in items_data
+        ]
+        
+        # Get user from context
+        user = self.context.get('request').user if self.context.get('request') else None
+        
+        return SalesService.create_sales_return(
+            invoice_id=invoice.id,
+            return_date=validated_data['return_date'],
+            items=items,
+            reason=validated_data['reason'],
+            notes=validated_data.get('notes'),
+            user=user
+        )
+
+
 class PaymentAllocationSerializer(serializers.ModelSerializer):
     """Serializer for PaymentAllocation."""
     

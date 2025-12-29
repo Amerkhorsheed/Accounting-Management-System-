@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\sales\credit_service.py
+# hypothesis_version: 6.148.8
+
+['0.00', '0.8', '999999999.99', 'PaymentAllocation', 'allocation_amount', 'allocations', 'amount', 'credit_limit', 'due_date', 'error', 'id', 'invoice_date', 'invoice_id', 'invoice_number', 'is_overdue', 'ok', 'paid_amount', 'remaining_amount', 'status', 'total', 'total_amount', 'warning']

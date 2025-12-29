@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\migrations\0003_default_units.py
+# hypothesis_version: 6.148.8
+
+['Product', 'ProductUnit', 'Unit', 'bulk portion', 'carton', 'inventory', 'kilogram', 'name', 'name_en', 'pack', 'packet', 'piece', 'symbol', 'باكيت', 'علبة', 'قطعة', 'كجم', 'كروز', 'كف', 'كيلو']

@@ -190,20 +190,29 @@ class ReportService:
         )
         
         # Aggregate by period
+        # Note: invoice_date is already a DateField, so we use it directly for day grouping
+        # to avoid SQL Server compatibility issues with TruncDate on date fields
         if group_by == 'month':
-            trend = invoices.annotate(
+            trend_data = invoices.annotate(
                 period=TruncMonth('invoice_date')
             ).values('period').annotate(
                 total=Sum('total_amount'),
                 count=Count('id')
             ).order_by('period')
+            trend = list(trend_data)
         else:
-            trend = invoices.annotate(
-                period=TruncDate('invoice_date')
-            ).values('period').annotate(
+            # Group by invoice_date directly since it's already a DateField
+            trend_data = invoices.values(
+                'invoice_date'
+            ).annotate(
                 total=Sum('total_amount'),
                 count=Count('id')
-            ).order_by('period')
+            ).order_by('invoice_date')
+            # Normalize field name to 'period' for consistent API response
+            trend = [
+                {'period': item['invoice_date'], 'total': item['total'], 'count': item['count']}
+                for item in trend_data
+            ]
         
         # Top customers
         top_customers = Invoice.objects.filter(
@@ -239,7 +248,7 @@ class ReportService:
                 'count': summary['count'] or 0,
                 'average': summary['avg'] or Decimal('0')
             },
-            'trend': list(trend),
+            'trend': trend,
             'top_customers': list(top_customers),
             'top_products': list(top_products)
         }
@@ -826,4 +835,223 @@ class ReportService:
                 for key, data in buckets.items()
             },
             'customer_breakdown': customer_breakdown
+        }
+
+    @staticmethod
+    @handle_service_error
+    def get_suppliers_report(
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate suppliers report with purchase statistics and payment status.
+        
+        Calculates total suppliers, active suppliers, total payables.
+        Lists suppliers sorted by total purchase amount descending.
+        Includes purchase totals and outstanding balances.
+        Supports date range filtering for purchase calculations.
+        
+        Requirements: 1.2, 1.3, 1.4, 1.5, 1.6
+        
+        Args:
+            start_date: Optional start date for filtering purchases (inclusive)
+            end_date: Optional end date for filtering purchases (inclusive)
+            
+        Returns:
+            Dict with generated_at, period, summary, and suppliers list
+        """
+        from apps.purchases.models import Supplier, PurchaseOrder, SupplierPayment
+        
+        # Get all active suppliers
+        suppliers = Supplier.objects.filter(is_active=True, is_deleted=False)
+        
+        # Build purchase order filter for date range
+        po_filter = Q(
+            status__in=[PurchaseOrder.Status.RECEIVED, PurchaseOrder.Status.PARTIAL, 
+                       PurchaseOrder.Status.APPROVED, PurchaseOrder.Status.ORDERED]
+        )
+        
+        if start_date:
+            po_filter &= Q(order_date__gte=start_date)
+        if end_date:
+            po_filter &= Q(order_date__lte=end_date)
+        
+        # Build payment filter for date range
+        payment_filter = Q()
+        if start_date:
+            payment_filter &= Q(payment_date__gte=start_date)
+        if end_date:
+            payment_filter &= Q(payment_date__lte=end_date)
+        
+        # Build supplier list with purchase totals
+        supplier_list = []
+        total_payables = Decimal('0.00')
+        total_purchases = Decimal('0.00')
+        active_suppliers = 0
+        
+        for supplier in suppliers:
+            # Get purchase orders for this supplier within date range
+            supplier_po_filter = po_filter & Q(supplier=supplier)
+            purchase_orders = PurchaseOrder.objects.filter(supplier_po_filter)
+            
+            # Calculate total purchases
+            supplier_total_purchases = purchase_orders.aggregate(
+                total=Sum('total_amount')
+            )['total'] or Decimal('0.00')
+            
+            # Get purchase order count
+            po_count = purchase_orders.count()
+            
+            # Get last purchase date
+            last_po = purchase_orders.order_by('-order_date').first()
+            last_purchase_date = last_po.order_date if last_po else None
+            
+            # Get payments for this supplier within date range
+            supplier_payment_filter = payment_filter & Q(supplier=supplier)
+            if payment_filter:
+                payments = SupplierPayment.objects.filter(supplier_payment_filter)
+            else:
+                payments = SupplierPayment.objects.filter(supplier=supplier)
+            
+            supplier_total_payments = payments.aggregate(
+                total=Sum('amount')
+            )['total'] or Decimal('0.00')
+            
+            # Outstanding balance is the supplier's current_balance (from model)
+            # This represents the actual outstanding amount owed to the supplier
+            outstanding_balance = supplier.current_balance
+            
+            # Track if supplier is active (has purchases in period)
+            if po_count > 0:
+                active_suppliers += 1
+            
+            supplier_list.append({
+                'id': supplier.id,
+                'code': supplier.code,
+                'name': supplier.name,
+                'total_purchases': supplier_total_purchases,
+                'total_payments': supplier_total_payments,
+                'outstanding_balance': outstanding_balance,
+                'purchase_order_count': po_count,
+                'last_purchase_date': last_purchase_date
+            })
+            
+            total_purchases += supplier_total_purchases
+            # Sum outstanding balances for total payables
+            if outstanding_balance > 0:
+                total_payables += outstanding_balance
+        
+        # Sort suppliers by total_purchases descending (Requirement 1.3)
+        supplier_list.sort(key=lambda x: x['total_purchases'], reverse=True)
+        
+        return {
+            'generated_at': date.today(),
+            'period': {
+                'start': start_date,
+                'end': end_date
+            },
+            'summary': {
+                'total_suppliers': len(supplier_list),
+                'active_suppliers': active_suppliers,
+                'total_payables': total_payables,
+                'total_purchases': total_purchases
+            },
+            'suppliers': supplier_list
+        }
+
+    @staticmethod
+    @handle_service_error
+    def get_expenses_report(
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        category_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate expenses report with category breakdown and expense details.
+        
+        Calculates total expenses and average expense amount.
+        Builds category breakdown with amounts and percentages.
+        Lists individual expenses with all details.
+        Supports date range and category filtering.
+        
+        Requirements: 2.2, 2.3, 2.4, 2.5, 2.6
+        
+        Args:
+            start_date: Optional start date for filtering expenses (inclusive)
+            end_date: Optional end date for filtering expenses (inclusive)
+            category_id: Optional category ID to filter expenses
+            
+        Returns:
+            Dict with generated_at, period, summary, by_category, and expenses list
+        """
+        from apps.expenses.models import Expense, ExpenseCategory
+        
+        # Build expense filter
+        expense_filter = Q(is_approved=True)
+        
+        if start_date:
+            expense_filter &= Q(expense_date__gte=start_date)
+        if end_date:
+            expense_filter &= Q(expense_date__lte=end_date)
+        if category_id:
+            expense_filter &= Q(category_id=category_id)
+        
+        # Get filtered expenses
+        expenses = Expense.objects.filter(expense_filter).select_related('category').order_by('-expense_date', '-id')
+        
+        # Calculate summary statistics
+        expense_count = expenses.count()
+        total_expenses = expenses.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        average_expense = total_expenses / expense_count if expense_count > 0 else Decimal('0.00')
+        
+        # Build category breakdown
+        category_totals = expenses.values(
+            'category_id', 'category__name'
+        ).annotate(
+            total=Sum('total_amount'),
+            count=Count('id')
+        ).order_by('-total')
+        
+        by_category = []
+        for cat in category_totals:
+            percentage = (cat['total'] / total_expenses * 100) if total_expenses > 0 else Decimal('0.00')
+            by_category.append({
+                'category_id': cat['category_id'],
+                'category_name': cat['category__name'] or 'بدون فئة',
+                'total': cat['total'],
+                'percentage': float(round(percentage, 2)),
+                'count': cat['count']
+            })
+        
+        # Build expenses list
+        expenses_list = []
+        for exp in expenses:
+            expenses_list.append({
+                'id': exp.id,
+                'expense_number': exp.expense_number,
+                'date': exp.expense_date,
+                'category_id': exp.category_id,
+                'category': exp.category.name if exp.category else 'بدون فئة',
+                'description': exp.description,
+                'amount': exp.amount,
+                'tax_amount': exp.tax_amount,
+                'total_amount': exp.total_amount,
+                'payment_method': exp.payment_method,
+                'payee': exp.payee,
+                'reference': exp.reference
+            })
+        
+        return {
+            'generated_at': date.today(),
+            'period': {
+                'start': start_date,
+                'end': end_date
+            },
+            'summary': {
+                'total_expenses': total_expenses,
+                'expense_count': expense_count,
+                'average_expense': average_expense
+            },
+            'by_category': by_category,
+            'expenses': expenses_list
         }

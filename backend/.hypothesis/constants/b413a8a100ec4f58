@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\purchases\services.py
+# hypothesis_version: 6.148.8
+
+['0', '0.00', '15.00', 'GRN', 'balance', 'closing_balance', 'code', 'credit', 'date', 'debit', 'description', 'discount_percent', 'id', 'name', 'notes', 'opening_balance', 'payment', 'po_item_id', 'product_id', 'product_unit_id', 'purchase', 'quantity', 'reference', 'supplier', 'tax_rate', 'total_payments', 'total_purchases', 'transactions', 'type', 'unit_price', 'استلام البضاعة', 'اعتماد أمر الشراء']

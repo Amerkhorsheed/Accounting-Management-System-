@@ -46,8 +46,29 @@ class SupplierViewSet(viewsets.ModelViewSet):
         serializer.save(updated_by=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
-        """Soft delete the supplier instead of hard delete."""
+        """
+        Soft delete the supplier instead of hard delete.
+        
+        Requirements: 3.4, 3.5 - Deletion protection for suppliers with purchase orders
+        """
         instance = self.get_object()
+        
+        # Check for purchase orders (non-deleted purchase orders)
+        existing_orders = PurchaseOrder.objects.filter(
+            supplier=instance,
+            is_deleted=False
+        )
+        
+        if existing_orders.exists():
+            return Response(
+                {
+                    'detail': 'لا يمكن حذف المورد لوجود أوامر شراء مرتبطة به',
+                    'code': 'DELETION_PROTECTED',
+                    'order_count': existing_orders.count()
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -104,6 +125,17 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     def approve(self, request, pk=None):
         """Approve a purchase order."""
         po = PurchaseService.approve_purchase_order(pk, request.user)
+        return Response(PurchaseOrderDetailSerializer(po).data)
+
+    @action(detail=True, methods=['post'])
+    @handle_view_error
+    def mark_ordered(self, request, pk=None):
+        """
+        Mark a purchase order as ordered.
+        
+        Requirements: 12.4 - Status actions
+        """
+        po = PurchaseService.mark_purchase_order_ordered(pk, request.user)
         return Response(PurchaseOrderDetailSerializer(po).data)
 
     @action(detail=True, methods=['post'])

@@ -1,0 +1,628 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.2, pytest-8.3.3, pluggy-1.5.0 -- C:\Users\ahmad\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+django: version: 5.0.14, settings: config.settings.testing (from option)
+rootdir: C:\ERP\backend
+configfile: pytest.ini
+plugins: anyio-4.3.0, hypothesis-6.148.8, asyncio-1.1.0, cov-6.2.1, django-4.11.1, typeguard-4.4.4
+asyncio: mode=Mode.STRICT, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/sales/test_sales_return_properties.py::TestSalesReturnProperties::test_return_quantity_validation FAILED [100%]
+
+================================== FAILURES ===================================
+__________ TestSalesReturnProperties.test_return_quantity_validation __________
+
+self = <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>
+sql = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+ignored_wrapper_args = (False, {'connection': <DatabaseWrapper vendor='sqlite' alias='default'>, 'cursor': <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>})
+
+    def _execute(self, sql, params, *ignored_wrapper_args):
+        # Raise a warning during app initialization (stored_app_configs is only
+        # ever set during testing).
+        if not apps.ready and not apps.stored_app_configs:
+            warnings.warn(self.APPS_NOT_READY_WARNING_MSG, category=RuntimeWarning)
+        self.db.validate_no_broken_transaction()
+        with self.db.wrap_database_errors:
+            if params is None:
+                # params default might be backend specific.
+                return self.cursor.execute(sql)
+            else:
+>               return self.cursor.execute(sql, params)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\utils.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.backends.sqlite3.base.SQLiteCursorWrapper object at 0x0000024393A09910>
+query = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+
+    def execute(self, query, params=None):
+        if params is None:
+            return super().execute(query)
+        # Extract names if params is a mapping, i.e. "pyformat" style is used.
+        param_names = list(params) if isinstance(params, Mapping) else None
+        query = self.convert_query(query, param_names=param_names)
+>       return super().execute(query, params)
+E       sqlite3.IntegrityError: UNIQUE constraint failed: sales_customer.code
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\sqlite3\base.py:329: IntegrityError
+
+The above exception was the direct cause of the following exception:
+
+self = <tests.sales.test_sales_return_properties.TestSalesReturnProperties object at 0x00000243909005F0>
+
+    @given(
+>       original_qty=quantity_strategy,
+        return_ratio=return_ratio_strategy,
+        unit_price=price_strategy
+    )
+
+tests\sales\test_sales_return_properties.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tests.sales.test_sales_return_properties.TestSalesReturnProperties object at 0x00000243909005F0>
+original_qty = Decimal('1.00'), return_ratio = Decimal('0.10')
+unit_price = Decimal('1.01')
+
+    @given(
+        original_qty=quantity_strategy,
+        return_ratio=return_ratio_strategy,
+        unit_price=price_strategy
+    )
+    @settings(
+        deadline=None,
+        max_examples=100,
+        suppress_health_check=[HealthCheck.function_scoped_fixture]
+    )
+    def test_return_quantity_validation(
+        self,
+        original_qty,
+        return_ratio,
+        unit_price
+    ):
+        """
+        Property 3: Return Quantity Validation
+    
+        For any sales return attempt, the return quantity for each item SHALL NOT
+        exceed (original_quantity - already_returned_quantity). If this constraint
+        is violated, the return SHALL be rejected.
+    
+        **Validates: Requirements 5.3**
+        **Feature: desktop-full-crud-returns, Property 3: Return Quantity Validation**
+        """
+        # Create fresh test data for this iteration
+>       user, category, unit, warehouse, customer = create_test_data()
+
+tests\sales\test_sales_return_properties.py:177: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    def create_test_data():
+        """Create fresh test data for each test iteration."""
+        unique_id = uuid.uuid4().hex[:8]
+    
+        # Create user
+        user = User.objects.create_user(
+            username=f'test_user_{unique_id}',
+            password='password123',
+            first_name='Test',
+            last_name='User',
+            is_active=True
+        )
+    
+        # Create category
+        category = Category.objects.create(name=f'Test Category {unique_id}')
+    
+        # Create unit
+        unit = Unit.objects.create(
+            name=f'Piece {unique_id}',
+            symbol=f'PC{unique_id[:4]}'
+        )
+    
+        # Create warehouse
+        warehouse = Warehouse.objects.create(
+            name=f'Test Warehouse {unique_id}',
+            code=f'WH{unique_id}',
+            manager=user
+        )
+    
+        # Create customer
+>       customer = Customer.objects.create(
+            name=f'Test Customer {unique_id}',
+            credit_limit=Decimal('100000.00'),
+            current_balance=Decimal('0.00')
+        )
+
+tests\sales\test_sales_return_properties.py:87: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.models.manager.Manager object at 0x0000024391E97860>
+args = ()
+kwargs = {'credit_limit': Decimal('100000.00'), 'current_balance': Decimal('0.00'), 'name': 'Test Customer 4e9cf735'}
+
+    @wraps(method)
+    def manager_method(self, *args, **kwargs):
+>       return getattr(self.get_queryset(), name)(*args, **kwargs)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\manager.py:87: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <QuerySet [<Customer: CUS-87425 - Test Customer f1c47659>]>
+kwargs = {'credit_limit': Decimal('100000.00'), 'current_balance': Decimal('0.00'), 'name': 'Test Customer 4e9cf735'}
+reverse_one_to_one_fields = frozenset()
+obj = <Customer: CUS-87425 - Test Customer 4e9cf735>
+
+    def create(self, **kwargs):
+        """
+        Create a new object with the given kwargs, saving it to the database
+        and returning the created object.
+        """
+        reverse_one_to_one_fields = frozenset(kwargs).intersection(
+            self.model._meta._reverse_one_to_one_field_names
+        )
+        if reverse_one_to_one_fields:
+            raise ValueError(
+                "The following fields do not exist in this model: %s"
+                % ", ".join(reverse_one_to_one_fields)
+            )
+    
+        obj = self.model(**kwargs)
+        self._for_write = True
+>       obj.save(force_insert=True, using=self.db)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\query.py:679: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Customer: CUS-87425 - Test Customer 4e9cf735>, args = ()
+kwargs = {'force_insert': True, 'using': 'default'}
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = generate_code('CUS', 5)
+>       super().save(*args, **kwargs)
+
+apps\sales\models.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Customer: CUS-87425 - Test Customer 4e9cf735>, force_insert = True
+force_update = False, using = 'default', update_fields = None
+
+    def save(
+        self, force_insert=False, force_update=False, using=None, update_fields=None
+    ):
+        """
+        Save the current instance. Override this in a subclass if you want to
+        control the saving process.
+    
+        The 'force_insert' and 'force_update' parameters can be used to insist
+        that the "save" must be an SQL insert or update (or equivalent for
+        non-SQL backends), respectively. Normally, they should not be set.
+        """
+        self._prepare_related_fields_for_save(operation_name="save")
+    
+        using = using or router.db_for_write(self.__class__, instance=self)
+        if force_insert and (force_update or update_fields):
+            raise ValueError("Cannot force both insert and updating in model saving.")
+    
+        deferred_non_generated_fields = {
+            f.attname
+            for f in self._meta.concrete_fields
+            if f.attname not in self.__dict__ and f.generated is False
+        }
+        if update_fields is not None:
+            # If update_fields is empty, skip the save. We do also check for
+            # no-op saves later on for inheritance cases. This bailout is
+            # still needed for skipping signal sending.
+            if not update_fields:
+                return
+    
+            update_fields = frozenset(update_fields)
+            field_names = self._meta._non_pk_concrete_field_names
+            non_model_fields = update_fields.difference(field_names)
+    
+            if non_model_fields:
+                raise ValueError(
+                    "The following fields do not exist in this model, are m2m "
+                    "fields, or are non-concrete fields: %s"
+                    % ", ".join(non_model_fields)
+                )
+    
+        # If saving to the same database, and this model is deferred, then
+        # automatically do an "update_fields" save on the loaded fields.
+        elif (
+            not force_insert
+            and deferred_non_generated_fields
+            and using == self._state.db
+        ):
+            field_names = set()
+            for field in self._meta.concrete_fields:
+                if not field.primary_key and not hasattr(field, "through"):
+                    field_names.add(field.attname)
+            loaded_fields = field_names.difference(deferred_non_generated_fields)
+            if loaded_fields:
+                update_fields = frozenset(loaded_fields)
+    
+>       self.save_base(
+            using=using,
+            force_insert=force_insert,
+            force_update=force_update,
+            update_fields=update_fields,
+        )
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\base.py:822: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Customer: CUS-87425 - Test Customer 4e9cf735>, raw = False
+force_insert = (<class 'apps.sales.models.Customer'>,), force_update = False
+using = 'default', update_fields = None
+
+    def save_base(
+        self,
+        raw=False,
+        force_insert=False,
+        force_update=False,
+        using=None,
+        update_fields=None,
+    ):
+        """
+        Handle the parts of saving which should be done only once per save,
+        yet need to be done in raw saves, too. This includes some sanity
+        checks and signal sending.
+    
+        The 'raw' argument is telling save_base not to save any parent
+        models and not to do any changes to the values before save. This
+        is used by fixture loading.
+        """
+        using = using or router.db_for_write(self.__class__, instance=self)
+        assert not (force_insert and (force_update or update_fields))
+        assert update_fields is None or update_fields
+        cls = origin = self.__class__
+        # Skip proxies, but keep the origin as the proxy model.
+        if cls._meta.proxy:
+            cls = cls._meta.concrete_model
+        meta = cls._meta
+        if not meta.auto_created:
+            pre_save.send(
+                sender=origin,
+                instance=self,
+                raw=raw,
+                using=using,
+                update_fields=update_fields,
+            )
+        # A transaction isn't needed if one query is issued.
+        if meta.parents:
+            context_manager = transaction.atomic(using=using, savepoint=False)
+        else:
+            context_manager = transaction.mark_for_rollback_on_error(using=using)
+        with context_manager:
+            parent_inserted = False
+            if not raw:
+                # Validate force insert only when parents are inserted.
+                force_insert = self._validate_force_insert(force_insert)
+                parent_inserted = self._save_parents(
+                    cls, using, update_fields, force_insert
+                )
+>           updated = self._save_table(
+                raw,
+                cls,
+                force_insert or parent_inserted,
+                force_update,
+                using,
+                update_fields,
+            )
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\base.py:909: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Customer: CUS-87425 - Test Customer 4e9cf735>, raw = False
+cls = <class 'apps.sales.models.Customer'>
+force_insert = (<class 'apps.sales.models.Customer'>,), force_update = False
+using = 'default', update_fields = None
+
+    def _save_table(
+        self,
+        raw=False,
+        cls=None,
+        force_insert=False,
+        force_update=False,
+        using=None,
+        update_fields=None,
+    ):
+        """
+        Do the heavy-lifting involved in saving. Update or insert the data
+        for a single table.
+        """
+        meta = cls._meta
+        non_pks_non_generated = [
+            f
+            for f in meta.local_concrete_fields
+            if not f.primary_key and not f.generated
+        ]
+    
+        if update_fields:
+            non_pks_non_generated = [
+                f
+                for f in non_pks_non_generated
+                if f.name in update_fields or f.attname in update_fields
+            ]
+    
+        pk_val = self._get_pk_val(meta)
+        if pk_val is None:
+            pk_val = meta.pk.get_pk_value_on_save(self)
+            setattr(self, meta.pk.attname, pk_val)
+        pk_set = pk_val is not None
+        if not pk_set and (force_update or update_fields):
+            raise ValueError("Cannot force an update in save() with no primary key.")
+        updated = False
+        # Skip an UPDATE when adding an instance and primary key has a default.
+        if (
+            not raw
+            and not force_insert
+            and self._state.adding
+            and (
+                (meta.pk.default and meta.pk.default is not NOT_PROVIDED)
+                or (meta.pk.db_default and meta.pk.db_default is not NOT_PROVIDED)
+            )
+        ):
+            force_insert = True
+        # If possible, try an UPDATE. If that doesn't update anything, do an INSERT.
+        if pk_set and not force_insert:
+            base_qs = cls._base_manager.using(using)
+            values = [
+                (
+                    f,
+                    None,
+                    (getattr(self, f.attname) if raw else f.pre_save(self, False)),
+                )
+                for f in non_pks_non_generated
+            ]
+            forced_update = update_fields or force_update
+            updated = self._do_update(
+                base_qs, using, pk_val, values, update_fields, forced_update
+            )
+            if force_update and not updated:
+                raise DatabaseError("Forced update did not affect any rows.")
+            if update_fields and not updated:
+                raise DatabaseError("Save with update_fields did not affect any rows.")
+        if not updated:
+            if meta.order_with_respect_to:
+                # If this is a model with an order_with_respect_to
+                # autopopulate the _order field
+                field = meta.order_with_respect_to
+                filter_args = field.get_filter_kwargs_for_object(self)
+                self._order = (
+                    cls._base_manager.using(using)
+                    .filter(**filter_args)
+                    .aggregate(
+                        _order__max=Coalesce(
+                            ExpressionWrapper(
+                                Max("_order") + Value(1), output_field=IntegerField()
+                            ),
+                            Value(0),
+                        ),
+                    )["_order__max"]
+                )
+            fields = [
+                f
+                for f in meta.local_concrete_fields
+                if not f.generated and (pk_set or f is not meta.auto_field)
+            ]
+            returning_fields = meta.db_returning_fields
+>           results = self._do_insert(
+                cls._base_manager, using, fields, returning_fields, raw
+            )
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\base.py:1071: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Customer: CUS-87425 - Test Customer 4e9cf735>
+manager = <django.db.models.manager.Manager object at 0x0000024391E97770>
+using = 'default'
+fields = [<django.db.models.fields.DateTimeField: created_at>, <django.db.models.fields.DateTimeField: updated_at>, <django.db...._at>, <django.db.models.fields.related.ForeignKey: deleted_by>, <django.db.models.fields.BooleanField: is_active>, ...]
+returning_fields = [<django.db.models.fields.BigAutoField: id>], raw = False
+
+    def _do_insert(self, manager, using, fields, returning_fields, raw):
+        """
+        Do an INSERT. If returning_fields is defined then this method should
+        return the newly created data for the model.
+        """
+>       return manager._insert(
+            [self],
+            fields=fields,
+            returning_fields=returning_fields,
+            using=using,
+            raw=raw,
+        )
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\base.py:1112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.models.manager.Manager object at 0x0000024391E97770>
+args = ([<Customer: CUS-87425 - Test Customer 4e9cf735>],)
+kwargs = {'fields': [<django.db.models.fields.DateTimeField: created_at>, <django.db.models.fields.DateTimeField: updated_at>, ...: is_active>, ...], 'raw': False, 'returning_fields': [<django.db.models.fields.BigAutoField: id>], 'using': 'default'}
+
+    @wraps(method)
+    def manager_method(self, *args, **kwargs):
+>       return getattr(self.get_queryset(), name)(*args, **kwargs)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\manager.py:87: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <QuerySet [<Customer: CUS-87425 - Test Customer f1c47659>]>
+objs = [<Customer: CUS-87425 - Test Customer 4e9cf735>]
+fields = [<django.db.models.fields.DateTimeField: created_at>, <django.db.models.fields.DateTimeField: updated_at>, <django.db...._at>, <django.db.models.fields.related.ForeignKey: deleted_by>, <django.db.models.fields.BooleanField: is_active>, ...]
+returning_fields = [<django.db.models.fields.BigAutoField: id>], raw = False
+using = 'default', on_conflict = None, update_fields = None
+unique_fields = None
+
+    def _insert(
+        self,
+        objs,
+        fields,
+        returning_fields=None,
+        raw=False,
+        using=None,
+        on_conflict=None,
+        update_fields=None,
+        unique_fields=None,
+    ):
+        """
+        Insert a new record for the given model. This provides an interface to
+        the InsertQuery class and is how Model.save() is implemented.
+        """
+        self._for_write = True
+        if using is None:
+            using = self.db
+        query = sql.InsertQuery(
+            self.model,
+            on_conflict=on_conflict,
+            update_fields=update_fields,
+            unique_fields=unique_fields,
+        )
+        query.insert_values(fields, objs, raw=raw)
+>       return query.get_compiler(using=using).execute_sql(returning_fields)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\query.py:1847: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <SQLInsertCompiler model=Customer connection=<DatabaseWrapper vendor='sqlite' alias='default'> using='default'>
+returning_fields = [<django.db.models.fields.BigAutoField: id>]
+
+    def execute_sql(self, returning_fields=None):
+        assert not (
+            returning_fields
+            and len(self.query.objs) != 1
+            and not self.connection.features.can_return_rows_from_bulk_insert
+        )
+        opts = self.query.get_meta()
+        self.returning_fields = returning_fields
+        cols = []
+        with self.connection.cursor() as cursor:
+            for sql, params in self.as_sql():
+>               cursor.execute(sql, params)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\models\sql\compiler.py:1823: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>
+sql = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+
+    def execute(self, sql, params=None):
+>       return self._execute_with_wrappers(
+            sql, params, many=False, executor=self._execute
+        )
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\utils.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>
+sql = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+many = False
+executor = <bound method CursorWrapper._execute of <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>>
+
+    def _execute_with_wrappers(self, sql, params, many, executor):
+        context = {"connection": self.db, "cursor": self}
+        for wrapper in reversed(self.db.execute_wrappers):
+            executor = functools.partial(wrapper, executor)
+>       return executor(sql, params, many, context)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\utils.py:92: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>
+sql = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+ignored_wrapper_args = (False, {'connection': <DatabaseWrapper vendor='sqlite' alias='default'>, 'cursor': <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>})
+
+    def _execute(self, sql, params, *ignored_wrapper_args):
+        # Raise a warning during app initialization (stored_app_configs is only
+        # ever set during testing).
+        if not apps.ready and not apps.stored_app_configs:
+            warnings.warn(self.APPS_NOT_READY_WARNING_MSG, category=RuntimeWarning)
+        self.db.validate_no_broken_transaction()
+>       with self.db.wrap_database_errors:
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\utils.py:100: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.utils.DatabaseErrorWrapper object at 0x00000243909B3EC0>
+exc_type = <class 'sqlite3.IntegrityError'>
+exc_value = IntegrityError('UNIQUE constraint failed: sales_customer.code')
+traceback = <traceback object at 0x00000243952A4540>
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            return
+        for dj_exc_type in (
+            DataError,
+            OperationalError,
+            IntegrityError,
+            InternalError,
+            ProgrammingError,
+            NotSupportedError,
+            DatabaseError,
+            InterfaceError,
+            Error,
+        ):
+            db_exc_type = getattr(self.wrapper.Database, dj_exc_type.__name__)
+            if issubclass(exc_type, db_exc_type):
+                dj_exc_value = dj_exc_type(*exc_value.args)
+                # Only set the 'errors_occurred' flag for errors that may make
+                # the connection unusable.
+                if dj_exc_type not in (DataError, IntegrityError):
+                    self.wrapper.errors_occurred = True
+>               raise dj_exc_value.with_traceback(traceback) from exc_value
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\utils.py:91: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>
+sql = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+ignored_wrapper_args = (False, {'connection': <DatabaseWrapper vendor='sqlite' alias='default'>, 'cursor': <django.db.backends.utils.CursorWrapper object at 0x0000024393AE1640>})
+
+    def _execute(self, sql, params, *ignored_wrapper_args):
+        # Raise a warning during app initialization (stored_app_configs is only
+        # ever set during testing).
+        if not apps.ready and not apps.stored_app_configs:
+            warnings.warn(self.APPS_NOT_READY_WARNING_MSG, category=RuntimeWarning)
+        self.db.validate_no_broken_transaction()
+        with self.db.wrap_database_errors:
+            if params is None:
+                # params default might be backend specific.
+                return self.cursor.execute(sql)
+            else:
+>               return self.cursor.execute(sql, params)
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\utils.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <django.db.backends.sqlite3.base.SQLiteCursorWrapper object at 0x0000024393A09910>
+query = 'INSERT INTO "sales_customer" ("created_at", "updated_at", "is_deleted", "deleted_at", "deleted_by_id", "is_active", "...?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING "sales_customer"."id"'
+params = ('2025-12-27 21:30:56.038027', '2025-12-27 21:30:56.038027', False, None, None, True, ...)
+
+    def execute(self, query, params=None):
+        if params is None:
+            return super().execute(query)
+        # Extract names if params is a mapping, i.e. "pyformat" style is used.
+        param_names = list(params) if isinstance(params, Mapping) else None
+        query = self.convert_query(query, param_names=param_names)
+>       return super().execute(query, params)
+E       django.db.utils.IntegrityError: UNIQUE constraint failed: sales_customer.code
+E       Falsifying example: test_return_quantity_validation(
+E           self=<tests.sales.test_sales_return_properties.TestSalesReturnProperties object at 0x00000243909005F0>,
+E           original_qty=int_to_decimal(100),  # or any other generated value
+E           return_ratio=int_to_decimal(10),  # or any other generated value
+E           unit_price=int_to_decimal(101),
+E       )
+
+C:\Users\ahmad\AppData\Local\Programs\Python\Python312\Lib\site-packages\django\db\backends\sqlite3\base.py:329: IntegrityError
+---------------------------- Captured stderr setup ----------------------------
+Using existing test database for alias 'default'...
+=========================== short test summary info ===========================
+FAILED tests/sales/test_sales_return_properties.py::TestSalesReturnProperties::test_return_quantity_validation
+======================== 1 failed in 101.54s (0:01:41) ========================

@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\reports\urls.py
+# hypothesis_version: 6.148.8
+
+['aging-report', 'aging/', 'customer-report', 'customers/', 'dashboard', 'dashboard/', 'inventory-report', 'inventory/', 'profit-report', 'profit/', 'receivables-report', 'receivables/', 'sales-report', 'sales/']

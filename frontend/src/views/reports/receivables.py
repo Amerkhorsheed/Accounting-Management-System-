@@ -7,6 +7,7 @@ all outstanding customer balances, with filtering and summary cards.
 Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
 """
 from typing import List, Dict, Optional
+from datetime import datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QGridLayout, QScrollArea,
@@ -20,6 +21,7 @@ from ...config import Colors, Fonts
 from ...widgets.cards import Card, StatCard
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
+from ...services.export import ExportService, ExportError
 from ...utils.error_handler import handle_ui_error
 
 
@@ -368,9 +370,150 @@ class ReceivablesReportView(QWidget):
             self.customer_selected.emit(customer)
     
     def _export_excel(self):
-        """Export report to Excel (placeholder)."""
-        MessageDialog.info(self, "معلومات", "تصدير Excel قيد التطوير")
+        """
+        Export report to Excel.
+        
+        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
+        """
+        if not self.customers_list:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
+            return
+        
+        try:
+            # Define columns for export
+            columns = [
+                ('code', 'كود العميل'),
+                ('name', 'اسم العميل'),
+                ('customer_type_display', 'نوع العميل'),
+                ('current_balance', 'الرصيد الحالي'),
+                ('credit_limit', 'حد الائتمان'),
+                ('available_credit', 'الائتمان المتاح'),
+                ('unpaid_invoice_count', 'فواتير غير مسددة'),
+                ('partial_invoice_count', 'فواتير جزئية')
+            ]
+            
+            # Prepare data with display values
+            export_data = []
+            for customer in self.customers_list:
+                customer_type = customer.get('customer_type', '')
+                type_display = {
+                    'individual': 'فرد',
+                    'company': 'شركة',
+                    'government': 'حكومي'
+                }.get(customer_type, customer_type)
+                
+                export_data.append({
+                    'code': customer.get('code', ''),
+                    'name': customer.get('name', ''),
+                    'customer_type_display': type_display,
+                    'current_balance': float(customer.get('current_balance', 0)),
+                    'credit_limit': float(customer.get('credit_limit', 0)),
+                    'available_credit': float(customer.get('available_credit', 0)),
+                    'unpaid_invoice_count': int(customer.get('unpaid_invoice_count', 0)),
+                    'partial_invoice_count': int(customer.get('partial_invoice_count', 0))
+                })
+            
+            # Generate filename with date
+            filename = f"تقرير_المستحقات_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            
+            # Prepare summary data
+            summary = self.report_data.get('summary', {})
+            summary_data = {
+                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
+                'المبالغ المتأخرة': f"{float(summary.get('total_overdue', 0)):,.2f} ل.س",
+                'عدد العملاء': str(summary.get('customer_count', 0))
+            }
+            
+            # Export to Excel
+            success = ExportService.export_to_excel(
+                data=export_data,
+                columns=columns,
+                filename=filename,
+                title="تقرير المستحقات",
+                parent=self,
+                summary=summary_data
+            )
+            
+            if success:
+                MessageDialog.info(self, "نجاح", "تم تصدير التقرير بنجاح")
+                
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل تصدير التقرير: {str(e)}")
     
     def _export_pdf(self):
-        """Export report to PDF (placeholder)."""
-        MessageDialog.info(self, "معلومات", "تصدير PDF قيد التطوير")
+        """
+        Export report to PDF.
+        
+        Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
+        """
+        if not self.customers_list:
+            MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
+            return
+        
+        try:
+            # Define columns for export
+            columns = [
+                ('code', 'كود العميل'),
+                ('name', 'اسم العميل'),
+                ('customer_type_display', 'نوع العميل'),
+                ('current_balance', 'الرصيد الحالي'),
+                ('credit_limit', 'حد الائتمان'),
+                ('available_credit', 'الائتمان المتاح'),
+                ('unpaid_invoice_count', 'فواتير غير مسددة')
+            ]
+            
+            # Prepare data with display values
+            export_data = []
+            for customer in self.customers_list:
+                customer_type = customer.get('customer_type', '')
+                type_display = {
+                    'individual': 'فرد',
+                    'company': 'شركة',
+                    'government': 'حكومي'
+                }.get(customer_type, customer_type)
+                
+                export_data.append({
+                    'code': customer.get('code', ''),
+                    'name': customer.get('name', ''),
+                    'customer_type_display': type_display,
+                    'current_balance': float(customer.get('current_balance', 0)),
+                    'credit_limit': float(customer.get('credit_limit', 0)),
+                    'available_credit': float(customer.get('available_credit', 0)),
+                    'unpaid_invoice_count': int(customer.get('unpaid_invoice_count', 0))
+                })
+            
+            # Generate filename with date
+            filename = f"تقرير_المستحقات_{datetime.now().strftime('%Y%m%d')}.pdf"
+            
+            # Prepare summary data
+            summary = self.report_data.get('summary', {})
+            summary_data = {
+                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
+                'المبالغ المتأخرة': f"{float(summary.get('total_overdue', 0)):,.2f} ل.س",
+                'عدد العملاء': str(summary.get('customer_count', 0))
+            }
+            
+            # Get date range
+            start_date = self.from_date.date().toString('yyyy-MM-dd')
+            end_date = self.to_date.date().toString('yyyy-MM-dd')
+            
+            # Export to PDF
+            success = ExportService.export_to_pdf(
+                data=export_data,
+                columns=columns,
+                filename=filename,
+                title="تقرير المستحقات",
+                parent=self,
+                summary=summary_data,
+                date_range=(start_date, end_date)
+            )
+            
+            if success:
+                MessageDialog.info(self, "نجاح", "تم تصدير التقرير بنجاح")
+                
+        except ExportError as e:
+            MessageDialog.error(self, "خطأ", e.message)
+        except Exception as e:
+            MessageDialog.error(self, "خطأ", f"فشل تصدير التقرير: {str(e)}")

@@ -4,13 +4,14 @@ Purchases Views - Suppliers and Purchase Orders
 Requirements: 4.1, 4.2 - Error handling for CRUD operations and form submissions
 Requirements: 3.1, 3.2, 3.3, 3.4 - Purchase order creation and management
 Requirements: 4.1, 4.2, 4.3 - Unit selection in purchases
+Requirements: 12.2, 12.4, 12.6 - Purchase order details, status actions, filtering
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QDialog, QComboBox, QDateEdit, QTextEdit,
     QDoubleSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QPushButton, QGridLayout, QFrame,
-    QAbstractItemView, QLineEdit
+    QAbstractItemView, QLineEdit, QSpinBox
 )
 from PySide6.QtCore import Qt, Signal, QDate, QEvent
 from PySide6.QtGui import QFont
@@ -116,7 +117,11 @@ class SuppliersView(QWidget):
     
     @handle_ui_error
     def update_supplier(self, supplier_id: int, data: dict):
-        """Update supplier via API."""
+        """
+        Update supplier via API.
+        
+        Requirements: 3.3 - Edit supplier functionality
+        """
         editable_fields = [
             'name', 'name_en', 'phone', 'mobile', 'email', 'fax', 'website',
             'address', 'city', 'region', 'postal_code', 'country',
@@ -125,7 +130,7 @@ class SuppliersView(QWidget):
         ]
         update_data = {k: v for k, v in data.items() if k in editable_fields and v is not None}
         
-        api.patch(f'purchases/suppliers/{supplier_id}/', update_data)
+        api.update_supplier(supplier_id, update_data)
         MessageDialog.success(self, "نجاح", "تم تحديث المورد بنجاح")
         self.refresh()
     
@@ -138,16 +143,31 @@ class SuppliersView(QWidget):
     
     @handle_ui_error
     def delete_supplier(self, data: dict):
-        """Delete supplier via API."""
+        """
+        Delete supplier via API.
+        
+        Requirements: 3.4, 3.5 - Delete with confirmation and handle deletion protection
+        """
         dialog = ConfirmDialog(
             "حذف المورد",
             f"هل أنت متأكد من حذف المورد '{data.get('name')}'؟",
             parent=self
         )
         if dialog.exec():
-            api.delete(f'purchases/suppliers/{data.get("id")}/')
-            MessageDialog.success(self, "نجاح", "تم حذف المورد بنجاح")
-            self.refresh()
+            try:
+                api.delete_supplier(data.get("id"))
+                MessageDialog.success(self, "نجاح", "تم حذف المورد بنجاح")
+                self.refresh()
+            except ApiException as e:
+                # Handle deletion protection error
+                if e.error_code == 'DELETION_PROTECTED':
+                    MessageDialog.error(
+                        self,
+                        "لا يمكن الحذف",
+                        "لا يمكن حذف المورد لوجود أوامر شراء مرتبطة به"
+                    )
+                else:
+                    raise
 
 
 class PurchaseOrdersView(QWidget):
@@ -155,10 +175,12 @@ class PurchaseOrdersView(QWidget):
     Purchase orders management view.
     
     Requirements: 3.1, 3.2, 3.3, 3.4 - Purchase order creation and management
+    Requirements: 12.2, 12.4, 12.6 - Details dialog, status actions, filtering
     """
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.suppliers_cache = []
         self.setup_ui()
         
     def setup_ui(self):
@@ -169,6 +191,56 @@ class PurchaseOrdersView(QWidget):
         title = QLabel("أوامر الشراء")
         title.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H2, QFont.Bold))
         layout.addWidget(title)
+        
+        # Requirements: 12.6 - Add filtering section
+        filter_frame = QFrame()
+        filter_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+        filter_layout = QHBoxLayout(filter_frame)
+        filter_layout.setSpacing(16)
+        
+        # Status filter
+        filter_layout.addWidget(QLabel("الحالة:"))
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("الكل", None)
+        self.status_filter.addItem("مسودة", "draft")
+        self.status_filter.addItem("معتمد", "approved")
+        self.status_filter.addItem("تم الطلب", "ordered")
+        self.status_filter.addItem("مستلم جزئياً", "partial")
+        self.status_filter.addItem("مستلم", "received")
+        self.status_filter.addItem("ملغي", "cancelled")
+        self.status_filter.currentIndexChanged.connect(self.apply_filters)
+        filter_layout.addWidget(self.status_filter)
+        
+        # Supplier filter
+        filter_layout.addWidget(QLabel("المورد:"))
+        self.supplier_filter = QComboBox()
+        self.supplier_filter.addItem("الكل", None)
+        self.supplier_filter.currentIndexChanged.connect(self.apply_filters)
+        filter_layout.addWidget(self.supplier_filter)
+        
+        # Date range filter
+        filter_layout.addWidget(QLabel("من:"))
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDate(QDate.currentDate().addMonths(-1))
+        self.date_from.dateChanged.connect(self.apply_filters)
+        filter_layout.addWidget(self.date_from)
+        
+        filter_layout.addWidget(QLabel("إلى:"))
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDate(QDate.currentDate())
+        self.date_to.dateChanged.connect(self.apply_filters)
+        filter_layout.addWidget(self.date_to)
+        
+        # Clear filters button
+        clear_btn = QPushButton("مسح الفلاتر")
+        clear_btn.setProperty("class", "secondary")
+        clear_btn.clicked.connect(self.clear_filters)
+        filter_layout.addWidget(clear_btn)
+        
+        filter_layout.addStretch()
+        layout.addWidget(filter_frame)
         
         columns = [
             {'key': 'order_number', 'label': 'رقم الأمر'},
@@ -182,6 +254,7 @@ class PurchaseOrdersView(QWidget):
         self.table.add_btn.setText("➕ أمر شراء جديد")
         self.table.add_btn.clicked.connect(self.add_purchase_order)
         self.table.action_clicked.connect(self.on_action)
+        self.table.row_double_clicked.connect(self.show_order_details)
         layout.addWidget(self.table)
     
     def add_purchase_order(self):
@@ -203,29 +276,142 @@ class PurchaseOrdersView(QWidget):
     @handle_ui_error
     def refresh(self):
         """Refresh purchase orders data from API."""
-        response = api.get_purchase_orders()
+        # Load suppliers for filter
+        self.load_suppliers()
+        
+        # Apply filters
+        self.apply_filters()
+    
+    def load_suppliers(self):
+        """Load suppliers for filter dropdown."""
+        try:
+            response = api.get_suppliers()
+            if isinstance(response, dict) and 'results' in response:
+                self.suppliers_cache = response['results']
+            else:
+                self.suppliers_cache = response if isinstance(response, list) else []
+            
+            # Update supplier filter combo
+            current_supplier = self.supplier_filter.currentData()
+            self.supplier_filter.blockSignals(True)
+            self.supplier_filter.clear()
+            self.supplier_filter.addItem("الكل", None)
+            for supplier in self.suppliers_cache:
+                self.supplier_filter.addItem(supplier.get('name', ''), supplier.get('id'))
+            
+            # Restore selection
+            if current_supplier:
+                for i in range(self.supplier_filter.count()):
+                    if self.supplier_filter.itemData(i) == current_supplier:
+                        self.supplier_filter.setCurrentIndex(i)
+                        break
+            self.supplier_filter.blockSignals(False)
+        except Exception:
+            pass
+    
+    @handle_ui_error
+    def apply_filters(self):
+        """Apply filters and refresh data."""
+        params = {}
+        
+        # Status filter
+        status = self.status_filter.currentData()
+        if status:
+            params['status'] = status
+        
+        # Supplier filter
+        supplier_id = self.supplier_filter.currentData()
+        if supplier_id:
+            params['supplier'] = supplier_id
+        
+        # Date range filter
+        params['order_date__gte'] = self.date_from.date().toString('yyyy-MM-dd')
+        params['order_date__lte'] = self.date_to.date().toString('yyyy-MM-dd')
+        
+        response = api.get_purchase_orders(params)
         if isinstance(response, dict) and 'results' in response:
             orders = response['results']
         else:
             orders = response if isinstance(response, list) else []
         self.table.set_data(orders)
     
+    def clear_filters(self):
+        """Clear all filters."""
+        self.status_filter.setCurrentIndex(0)
+        self.supplier_filter.setCurrentIndex(0)
+        self.date_from.setDate(QDate.currentDate().addMonths(-1))
+        self.date_to.setDate(QDate.currentDate())
+        self.apply_filters()
+    
+    @handle_ui_error
+    def show_order_details(self, row: int, data: dict):
+        """
+        Show purchase order details dialog on double-click.
+        
+        Requirements: 12.2 - Display full PO with items on double-click
+        """
+        order_id = data.get('id')
+        if order_id:
+            # Fetch full order details with items
+            order = api.get_purchase_order(order_id)
+            dialog = PurchaseOrderDetailsDialog(order, parent=self)
+            dialog.approve_requested.connect(self.approve_order)
+            dialog.mark_ordered_requested.connect(self.mark_order_ordered)
+            dialog.receive_requested.connect(self.receive_goods)
+            dialog.exec()
+    
+    @handle_ui_error
+    def approve_order(self, order: dict):
+        """
+        Approve a purchase order.
+        
+        Requirements: 12.4 - Status actions
+        """
+        order_id = order.get('id')
+        if order_id:
+            api.approve_purchase_order(order_id)
+            MessageDialog.success(self, "نجاح", "تم اعتماد أمر الشراء بنجاح")
+            self.apply_filters()
+    
+    @handle_ui_error
+    def mark_order_ordered(self, order: dict):
+        """
+        Mark a purchase order as ordered.
+        
+        Requirements: 12.4 - Status actions
+        """
+        order_id = order.get('id')
+        if order_id:
+            api.mark_purchase_order_ordered(order_id)
+            MessageDialog.success(self, "نجاح", "تم تحديث حالة أمر الشراء إلى 'تم الطلب'")
+            self.apply_filters()
+    
+    @handle_ui_error
+    def receive_goods(self, order: dict):
+        """
+        Open goods receipt dialog.
+        
+        Requirements: 12.4 - Receive goods action
+        """
+        dialog = GoodsReceiptDialog(order, parent=self)
+        dialog.saved.connect(self.process_goods_receipt)
+        dialog.exec()
+    
+    @handle_ui_error
+    def process_goods_receipt(self, data: dict):
+        """Process goods receipt."""
+        order_id = data.get('order_id')
+        if order_id:
+            api.receive_goods(order_id, data)
+            MessageDialog.success(self, "نجاح", "تم استلام البضاعة بنجاح")
+            self.apply_filters()
+    
     def on_action(self, action: str, row: int, data: dict):
         """Handle table action."""
         if action == 'view':
-            order_id = data.get('id')
-            if order_id:
-                try:
-                    details = f"""
-رقم الطلب: {data.get('order_number', '')}
-التاريخ: {data.get('order_date', '')}
-المورد: {data.get('supplier_name', '')}
-الحالة: {data.get('status_display', data.get('status', ''))}
-المجموع: {float(data.get('total_amount', 0)):,.2f} ل.س
-                    """.strip()
-                    MessageDialog.info(self, "تفاصيل طلب الشراء", details)
-                except Exception as e:
-                    MessageDialog.error(self, "خطأ", f"فشل في عرض التفاصيل: {str(e)}")
+            self.show_order_details(row, data)
+        elif action == 'edit':
+            self.show_order_details(row, data)
 
 
 class PurchaseOrderFormDialog(QDialog):
@@ -881,6 +1067,410 @@ class PurchaseOrderFormDialog(QDialog):
     
     def save(self):
         """Emit saved signal with form data."""
+        if self.validate():
+            self.saved.emit(self.get_data())
+            self.accept()
+
+
+class PurchaseOrderDetailsDialog(QDialog):
+    """
+    Dialog for viewing purchase order details with status actions.
+    
+    Requirements: 12.2 - Display full PO with items on double-click
+    Requirements: 12.4 - Add approve, mark ordered, receive goods actions
+    """
+    
+    approve_requested = Signal(dict)  # Emits order data when approve is requested
+    mark_ordered_requested = Signal(dict)  # Emits order data when mark ordered is requested
+    receive_requested = Signal(dict)  # Emits order data when receive goods is requested
+    
+    def __init__(self, order: dict, parent=None):
+        """
+        Initialize the purchase order details dialog.
+        
+        Args:
+            order: Full purchase order data with items
+        """
+        super().__init__(parent)
+        self.order = order
+        
+        self.setWindowTitle(f"تفاصيل أمر الشراء - {order.get('order_number', '')}")
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(600)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Initialize dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+        
+        # Header with order info
+        header_frame = QFrame()
+        header_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 16px;")
+        header_layout = QVBoxLayout(header_frame)
+        header_layout.setSpacing(12)
+        
+        # Order number and status
+        title_row = QHBoxLayout()
+        order_label = QLabel(f"📋 أمر شراء رقم: {self.order.get('order_number', '')}")
+        order_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H2, QFont.Bold))
+        title_row.addWidget(order_label)
+        
+        status = self.order.get('status', '')
+        status_display = self.order.get('status_display', status)
+        status_label = QLabel(status_display)
+        status_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
+        
+        # Color code status
+        status_colors = {
+            'draft': Colors.WARNING,
+            'approved': Colors.INFO,
+            'ordered': Colors.PRIMARY,
+            'partial': Colors.WARNING,
+            'received': Colors.SUCCESS,
+            'cancelled': Colors.DANGER,
+        }
+        status_color = status_colors.get(status, Colors.LIGHT_TEXT)
+        status_label.setStyleSheet(f"""
+            background-color: {status_color}20;
+            color: {status_color};
+            padding: 4px 12px;
+            border-radius: 4px;
+        """)
+        title_row.addWidget(status_label)
+        title_row.addStretch()
+        header_layout.addLayout(title_row)
+        
+        # Order details grid
+        details_grid = QHBoxLayout()
+        details_grid.setSpacing(32)
+        
+        # Left column
+        left_col = QVBoxLayout()
+        left_col.setSpacing(8)
+        left_col.addWidget(QLabel(f"🏢 المورد: {self.order.get('supplier_name', '')}"))
+        left_col.addWidget(QLabel(f"📅 تاريخ الطلب: {self.order.get('order_date', '')}"))
+        if self.order.get('expected_date'):
+            left_col.addWidget(QLabel(f"📆 التسليم المتوقع: {self.order.get('expected_date', '')}"))
+        warehouse_name = self.order.get('warehouse_name', self.order.get('warehouse', {}).get('name', ''))
+        left_col.addWidget(QLabel(f"🏭 المستودع: {warehouse_name}"))
+        details_grid.addLayout(left_col)
+        
+        # Right column - amounts
+        right_col = QVBoxLayout()
+        right_col.setSpacing(8)
+        total = float(self.order.get('total_amount', 0))
+        paid = float(self.order.get('paid_amount', 0))
+        remaining = float(self.order.get('remaining_amount', total - paid))
+        
+        total_label = QLabel(f"💰 الإجمالي: {total:,.2f} ل.س")
+        total_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
+        right_col.addWidget(total_label)
+        
+        paid_label = QLabel(f"✅ المدفوع: {paid:,.2f} ل.س")
+        paid_label.setStyleSheet(f"color: {Colors.SUCCESS};")
+        right_col.addWidget(paid_label)
+        
+        remaining_label = QLabel(f"⏳ المتبقي: {remaining:,.2f} ل.س")
+        if remaining > 0:
+            remaining_label.setStyleSheet(f"color: {Colors.WARNING};")
+        right_col.addWidget(remaining_label)
+        
+        details_grid.addLayout(right_col)
+        details_grid.addStretch()
+        header_layout.addLayout(details_grid)
+        
+        layout.addWidget(header_frame)
+        
+        # Items table
+        items_label = QLabel("📦 بنود أمر الشراء")
+        items_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
+        layout.addWidget(items_label)
+        
+        self.items_table = QTableWidget()
+        self.items_table.setColumnCount(7)
+        self.items_table.setHorizontalHeaderLabels([
+            'المنتج', 'الوحدة', 'الكمية', 'المستلم', 'المتبقي', 'السعر', 'الإجمالي'
+        ])
+        self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.items_table.verticalHeader().setVisible(False)
+        self.items_table.setAlternatingRowColors(True)
+        self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        
+        # Populate items
+        items = self.order.get('items', [])
+        self.items_table.setRowCount(len(items))
+        
+        for row, item in enumerate(items):
+            self.items_table.setItem(row, 0, QTableWidgetItem(item.get('product_name', '')))
+            unit_name = item.get('unit_name', '') or item.get('unit_symbol', '') or '-'
+            self.items_table.setItem(row, 1, QTableWidgetItem(unit_name))
+            quantity = float(item.get('quantity', 0))
+            received = float(item.get('received_quantity', 0))
+            remaining_qty = quantity - received
+            self.items_table.setItem(row, 2, QTableWidgetItem(f"{quantity:.2f}"))
+            self.items_table.setItem(row, 3, QTableWidgetItem(f"{received:.2f}"))
+            self.items_table.setItem(row, 4, QTableWidgetItem(f"{remaining_qty:.2f}"))
+            self.items_table.setItem(row, 5, QTableWidgetItem(f"{float(item.get('unit_price', 0)):,.2f}"))
+            self.items_table.setItem(row, 6, QTableWidgetItem(f"{float(item.get('total', 0)):,.2f}"))
+        
+        layout.addWidget(self.items_table)
+        
+        # Notes if any
+        notes = self.order.get('notes', '')
+        if notes:
+            notes_frame = QFrame()
+            notes_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+            notes_layout = QVBoxLayout(notes_frame)
+            notes_label = QLabel("📝 ملاحظات:")
+            notes_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
+            notes_layout.addWidget(notes_label)
+            notes_text = QLabel(notes)
+            notes_text.setWordWrap(True)
+            notes_layout.addWidget(notes_text)
+            layout.addWidget(notes_frame)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        
+        status = self.order.get('status', '')
+        
+        # Requirements: 12.4 - Add approve action for draft orders
+        if status == 'draft':
+            approve_btn = QPushButton("✅ اعتماد")
+            approve_btn.setProperty("class", "success")
+            approve_btn.setMinimumHeight(44)
+            approve_btn.clicked.connect(self.request_approve)
+            buttons_layout.addWidget(approve_btn)
+        
+        # Requirements: 12.4 - Add mark ordered action for approved orders
+        if status == 'approved':
+            ordered_btn = QPushButton("📤 تم الطلب")
+            ordered_btn.setProperty("class", "primary")
+            ordered_btn.setMinimumHeight(44)
+            ordered_btn.clicked.connect(self.request_mark_ordered)
+            buttons_layout.addWidget(ordered_btn)
+        
+        # Requirements: 12.4 - Add receive goods action for approved/ordered/partial orders
+        if status in ['approved', 'ordered', 'partial']:
+            receive_btn = QPushButton("📥 استلام بضاعة")
+            receive_btn.setProperty("class", "primary")
+            receive_btn.setMinimumHeight(44)
+            receive_btn.clicked.connect(self.request_receive)
+            buttons_layout.addWidget(receive_btn)
+        
+        buttons_layout.addStretch()
+        
+        close_btn = QPushButton("إغلاق")
+        close_btn.setProperty("class", "secondary")
+        close_btn.setMinimumHeight(44)
+        close_btn.setMinimumWidth(100)
+        close_btn.clicked.connect(self.accept)
+        buttons_layout.addWidget(close_btn)
+        
+        layout.addLayout(buttons_layout)
+    
+    def request_approve(self):
+        """Request to approve this order."""
+        if ConfirmDialog(
+            "اعتماد أمر الشراء",
+            f"هل أنت متأكد من اعتماد أمر الشراء '{self.order.get('order_number')}'؟",
+            danger=False,
+            parent=self
+        ).exec():
+            self.approve_requested.emit(self.order)
+            self.accept()
+    
+    def request_mark_ordered(self):
+        """Request to mark this order as ordered."""
+        if ConfirmDialog(
+            "تحديث حالة أمر الشراء",
+            f"هل أنت متأكد من تحديث حالة أمر الشراء '{self.order.get('order_number')}' إلى 'تم الطلب'؟",
+            danger=False,
+            parent=self
+        ).exec():
+            self.mark_ordered_requested.emit(self.order)
+            self.accept()
+    
+    def request_receive(self):
+        """Request to receive goods for this order."""
+        self.receive_requested.emit(self.order)
+        self.accept()
+
+
+class GoodsReceiptDialog(QDialog):
+    """
+    Dialog for receiving goods against a purchase order.
+    
+    Requirements: 12.4, 12.5 - Receive goods action and stock update
+    """
+    
+    saved = Signal(dict)  # Emits receipt data
+    
+    def __init__(self, order: dict, parent=None):
+        """
+        Initialize the goods receipt dialog.
+        
+        Args:
+            order: Full purchase order data with items
+        """
+        super().__init__(parent)
+        self.order = order
+        self.receipt_items = []
+        
+        self.setWindowTitle(f"استلام بضاعة - {order.get('order_number', '')}")
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(500)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Initialize dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+        
+        # Header
+        header_label = QLabel(f"📥 استلام بضاعة لأمر الشراء: {self.order.get('order_number', '')}")
+        header_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H2, QFont.Bold))
+        layout.addWidget(header_label)
+        
+        # Receipt info
+        info_frame = QFrame()
+        info_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+        info_layout = QHBoxLayout(info_frame)
+        
+        info_layout.addWidget(QLabel("تاريخ الاستلام:"))
+        self.received_date = QDateEdit()
+        self.received_date.setCalendarPopup(True)
+        self.received_date.setDate(QDate.currentDate())
+        info_layout.addWidget(self.received_date)
+        
+        info_layout.addWidget(QLabel("رقم فاتورة المورد:"))
+        self.supplier_invoice = QLineEdit()
+        self.supplier_invoice.setPlaceholderText("اختياري")
+        info_layout.addWidget(self.supplier_invoice)
+        
+        info_layout.addStretch()
+        layout.addWidget(info_frame)
+        
+        # Items table
+        items_label = QLabel("📦 البنود للاستلام")
+        items_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
+        layout.addWidget(items_label)
+        
+        self.items_table = QTableWidget()
+        self.items_table.setColumnCount(6)
+        self.items_table.setHorizontalHeaderLabels([
+            'المنتج', 'الكمية المطلوبة', 'المستلم سابقاً', 'المتبقي', 'الكمية للاستلام', 'ملاحظات'
+        ])
+        self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.items_table.verticalHeader().setVisible(False)
+        self.items_table.setAlternatingRowColors(True)
+        
+        # Populate items
+        items = self.order.get('items', [])
+        self.items_table.setRowCount(len(items))
+        
+        for row, item in enumerate(items):
+            quantity = float(item.get('quantity', 0))
+            received = float(item.get('received_quantity', 0))
+            remaining = quantity - received
+            
+            self.items_table.setItem(row, 0, QTableWidgetItem(item.get('product_name', '')))
+            self.items_table.setItem(row, 1, QTableWidgetItem(f"{quantity:.2f}"))
+            self.items_table.setItem(row, 2, QTableWidgetItem(f"{received:.2f}"))
+            self.items_table.setItem(row, 3, QTableWidgetItem(f"{remaining:.2f}"))
+            
+            # Quantity to receive spinner
+            qty_spin = QDoubleSpinBox()
+            qty_spin.setRange(0, remaining)
+            qty_spin.setValue(remaining)  # Default to remaining quantity
+            qty_spin.setDecimals(2)
+            self.items_table.setCellWidget(row, 4, qty_spin)
+            
+            # Notes
+            notes_edit = QLineEdit()
+            notes_edit.setPlaceholderText("ملاحظات...")
+            self.items_table.setCellWidget(row, 5, notes_edit)
+            
+            # Store item reference
+            self.receipt_items.append({
+                'po_item_id': item.get('id'),
+                'product_name': item.get('product_name', ''),
+                'remaining': remaining,
+                'qty_spin': qty_spin,
+                'notes_edit': notes_edit
+            })
+        
+        layout.addWidget(self.items_table)
+        
+        # Notes
+        notes_layout = QHBoxLayout()
+        notes_layout.addWidget(QLabel("ملاحظات عامة:"))
+        self.notes_edit = QLineEdit()
+        self.notes_edit.setPlaceholderText("ملاحظات إضافية...")
+        notes_layout.addWidget(self.notes_edit)
+        layout.addLayout(notes_layout)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        
+        save_btn = QPushButton("✅ تأكيد الاستلام")
+        save_btn.setProperty("class", "success")
+        save_btn.setMinimumHeight(44)
+        save_btn.clicked.connect(self.save)
+        buttons_layout.addWidget(save_btn)
+        
+        buttons_layout.addStretch()
+        
+        cancel_btn = QPushButton("إلغاء")
+        cancel_btn.setProperty("class", "secondary")
+        cancel_btn.setMinimumHeight(44)
+        cancel_btn.clicked.connect(self.reject)
+        buttons_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(buttons_layout)
+    
+    def validate(self) -> bool:
+        """Validate receipt data."""
+        # Check if at least one item has quantity > 0
+        has_items = False
+        for item in self.receipt_items:
+            qty = item['qty_spin'].value()
+            if qty > 0:
+                has_items = True
+                break
+        
+        if not has_items:
+            MessageDialog.warning(self, "تنبيه", "يجب تحديد كمية واحدة على الأقل للاستلام")
+            return False
+        
+        return True
+    
+    def get_data(self) -> dict:
+        """Get receipt data as dictionary."""
+        items = []
+        for item in self.receipt_items:
+            qty = item['qty_spin'].value()
+            if qty > 0:
+                items.append({
+                    'po_item_id': item['po_item_id'],
+                    'quantity': qty,
+                    'notes': item['notes_edit'].text().strip() or None
+                })
+        
+        return {
+            'order_id': self.order.get('id'),
+            'received_date': self.received_date.date().toString('yyyy-MM-dd'),
+            'supplier_invoice_no': self.supplier_invoice.text().strip() or None,
+            'notes': self.notes_edit.text().strip() or None,
+            'items': items
+        }
+    
+    def save(self):
+        """Emit saved signal with receipt data."""
         if self.validate():
             self.saved.emit(self.get_data())
             self.accept()

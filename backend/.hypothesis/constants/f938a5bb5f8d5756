@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\core\settings_serializers.py
+# hypothesis_version: 6.148.8
+
+['code', 'decimal_places', 'description', 'exchange_rate', 'id', 'is_active', 'is_default', 'is_primary', 'key', 'name', 'name_en', 'rate', 'symbol', 'updated_at', 'value']

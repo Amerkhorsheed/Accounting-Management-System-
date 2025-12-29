@@ -12,6 +12,7 @@ from django.db.models import Sum, Count
 from .models import ExpenseCategory, Expense
 from .serializers import ExpenseCategorySerializer, ExpenseSerializer
 from apps.core.decorators import handle_view_error
+from apps.core.exceptions import DeletionProtectedException
 
 
 class ExpenseCategoryViewSet(viewsets.ModelViewSet):
@@ -25,8 +26,31 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
 
     def destroy(self, request, *args, **kwargs):
-        """Soft delete the expense category instead of hard delete."""
+        """
+        Soft delete the expense category instead of hard delete.
+        
+        Requirements: 11.4, 11.5 - Prevent deletion if category has expenses
+        """
         instance = self.get_object()
+        
+        # Check if category has expenses
+        expenses_count = instance.expenses.filter(is_deleted=False).count()
+        if expenses_count > 0:
+            raise DeletionProtectedException(
+                model='ExpenseCategory',
+                identifier=instance.name,
+                reason=f'لا يمكن حذف هذه الفئة لأنها تحتوي على {expenses_count} مصروف'
+            )
+        
+        # Check if category has children
+        children_count = instance.children.filter(is_deleted=False).count()
+        if children_count > 0:
+            raise DeletionProtectedException(
+                model='ExpenseCategory',
+                identifier=instance.name,
+                reason=f'لا يمكن حذف هذه الفئة لأنها تحتوي على {children_count} فئة فرعية'
+            )
+        
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

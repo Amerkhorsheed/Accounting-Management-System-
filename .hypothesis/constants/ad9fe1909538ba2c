@@ -1,0 +1,4 @@
+# file: C:\ERP\backend\apps\inventory\migrations\0005_alter_product_is_taxable_alter_product_tax_rate.py
+# hypothesis_version: 6.148.8
+
+['0.00', 'inventory', 'is_taxable', 'product', 'tax_rate', 'خاضع للضريبة', 'نسبة الضريبة']
