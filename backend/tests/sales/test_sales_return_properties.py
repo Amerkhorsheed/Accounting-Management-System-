@@ -442,7 +442,7 @@ class TestSalesReturnProperties:
         # Calculate return quantity and expected return amount
         return_qty = (original_qty * return_ratio).quantize(Decimal('0.01'))
         assume(return_qty > 0)
-        expected_return_amount = return_qty * unit_price
+        expected_return_amount = (return_qty * invoice_item.total) / invoice_item.quantity
         
         # Create return
         sales_return = SalesService.create_sales_return(

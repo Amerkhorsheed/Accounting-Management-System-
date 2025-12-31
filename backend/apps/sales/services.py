@@ -473,6 +473,7 @@ class SalesService:
         user=None
     ) -> SalesReturn:
         """Create a sales return."""
+        from apps.inventory.models import ProductUnit
         
         invoice = Invoice.objects.get(id=invoice_id)
         
@@ -507,15 +508,39 @@ class SalesService:
                 reason=item_data.get('reason'),
                 created_by=user
             )
-            
-            total_amount += quantity * invoice_item.unit_price
+
+            # Calculate line total proportionally with original discount/tax
+            unit_price = Decimal(str(invoice_item.unit_price or '0'))
+            discount_percent = Decimal(str(invoice_item.discount_percent or '0'))
+            tax_rate = Decimal(str(invoice_item.tax_rate or '0'))
+
+            line_subtotal = quantity * unit_price
+            line_discount = (line_subtotal * discount_percent) / Decimal('100')
+            line_taxable = line_subtotal - line_discount
+            line_tax = (line_taxable * tax_rate) / Decimal('100')
+            line_total = line_taxable + line_tax
+
+            total_amount += line_total
             
             # Add stock back
             if invoice_item.product.track_stock:
+                if invoice_item.product_unit:
+                    base_quantity = invoice_item.product_unit.convert_to_base(quantity)
+                else:
+                    base_unit = ProductUnit.objects.filter(
+                        product=invoice_item.product,
+                        is_base_unit=True,
+                        is_deleted=False
+                    ).first()
+                    if base_unit:
+                        base_quantity = base_unit.convert_to_base(quantity)
+                    else:
+                        base_quantity = quantity
+
                 InventoryService.add_stock(
                     product_id=invoice_item.product_id,
                     warehouse_id=invoice.warehouse_id,
-                    quantity=quantity,
+                    quantity=base_quantity,
                     unit_cost=invoice_item.cost_price,
                     source_type=StockMovement.SourceType.RETURN,
                     reference_number=sales_return.return_number,
@@ -681,9 +706,30 @@ class SalesService:
         
         invoice = Invoice.objects.get(id=invoice_id)
         items = invoice.items.all()
-        
-        total_revenue = sum(item.total for item in items)
-        total_cost = sum(item.cost_price * item.quantity for item in items)
+
+        returned = SalesReturnItem.objects.filter(
+            invoice_item__invoice=invoice
+        ).values('invoice_item_id').annotate(qty=Sum('quantity'))
+        returned_by_item = {r['invoice_item_id']: (r['qty'] or Decimal('0')) for r in returned}
+
+        total_revenue = Decimal('0.00')
+        total_cost = Decimal('0.00')
+
+        for item in items:
+            returned_qty = returned_by_item.get(item.id, Decimal('0.00'))
+            net_qty = item.quantity - returned_qty
+            if net_qty < 0:
+                net_qty = Decimal('0.00')
+
+            if item.quantity and item.quantity > 0:
+                revenue = item.total * (net_qty / item.quantity)
+            else:
+                revenue = Decimal('0.00')
+
+            cost = item.cost_price * net_qty
+            total_revenue += revenue
+            total_cost += cost
+
         gross_profit = total_revenue - total_cost
         profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else Decimal('0')
         
@@ -697,6 +743,7 @@ class SalesService:
                 {
                     'product': item.product.name,
                     'quantity': item.quantity,
+                    'returned_quantity': returned_by_item.get(item.id, Decimal('0.00')),
                     'revenue': item.total,
                     'cost': item.cost_price * item.quantity,
                     'profit': item.profit

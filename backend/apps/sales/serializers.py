@@ -1,6 +1,7 @@
 """
 Sales Serializers
 """
+from decimal import Decimal
 from rest_framework import serializers
 from .models import Customer, Invoice, InvoiceItem, Payment, SalesReturn, SalesReturnItem, PaymentAllocation
 
@@ -78,6 +79,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
     tax_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     total = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     profit = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    returned_quantity = serializers.SerializerMethodField()
     
     class Meta:
         model = InvoiceItem
@@ -86,7 +88,7 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
             'product_unit', 'unit_name', 'unit_symbol',
             'quantity', 'base_quantity', 'unit_price', 'cost_price',
             'discount_percent', 'tax_rate',
-            'subtotal', 'discount_amount', 'tax_amount', 'total', 'profit', 'notes'
+            'subtotal', 'discount_amount', 'tax_amount', 'total', 'profit', 'returned_quantity', 'notes'
         ]
     
     def get_unit_name(self, obj):
@@ -101,6 +103,11 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
             return obj.product_unit.unit.symbol
         return obj.product.unit.symbol if obj.product else None
 
+    def get_returned_quantity(self, obj):
+        from django.db.models import Sum
+        total = SalesReturnItem.objects.filter(invoice_item=obj).aggregate(s=Sum('quantity'))['s']
+        return total or 0
+
 
 class InvoiceListSerializer(serializers.ModelSerializer):
     """Serializer for Invoice list view."""
@@ -111,6 +118,10 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     invoice_type_display = serializers.CharField(source='get_invoice_type_display', read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    returns_total = serializers.SerializerMethodField()
+    net_total = serializers.SerializerMethodField()
+    net_remaining = serializers.SerializerMethodField()
+    refund_amount = serializers.SerializerMethodField()
     
     class Meta:
         model = Invoice
@@ -119,8 +130,26 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'customer', 'customer_name', 'customer_code', 
             'warehouse', 'warehouse_name', 'invoice_date', 'due_date',
             'status', 'status_display', 'subtotal', 'discount_amount',
-            'tax_amount', 'total_amount', 'paid_amount', 'remaining_amount'
+            'tax_amount', 'total_amount', 'paid_amount', 'remaining_amount',
+            'returns_total', 'net_total', 'net_remaining', 'refund_amount'
         ]
+
+    def get_returns_total(self, obj):
+        from django.db.models import Sum
+        total = SalesReturn.objects.filter(original_invoice=obj).aggregate(s=Sum('total_amount'))['s']
+        return total or Decimal('0.00')
+
+    def get_net_total(self, obj):
+        net = (obj.total_amount or Decimal('0.00')) - self.get_returns_total(obj)
+        return net if net > 0 else Decimal('0.00')
+
+    def get_net_remaining(self, obj):
+        net_remaining = self.get_net_total(obj) - (obj.paid_amount or Decimal('0.00'))
+        return net_remaining if net_remaining > 0 else Decimal('0.00')
+
+    def get_refund_amount(self, obj):
+        refund = (obj.paid_amount or Decimal('0.00')) - self.get_net_total(obj)
+        return refund if refund > 0 else Decimal('0.00')
 
 
 class InvoiceDetailSerializer(serializers.ModelSerializer):
@@ -132,6 +161,10 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     invoice_type_display = serializers.CharField(source='get_invoice_type_display', read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    returns_total = serializers.SerializerMethodField()
+    net_total = serializers.SerializerMethodField()
+    net_remaining = serializers.SerializerMethodField()
+    refund_amount = serializers.SerializerMethodField()
     items = InvoiceItemSerializer(many=True, read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     
@@ -144,11 +177,29 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'invoice_date', 'due_date', 'status', 'status_display',
             'subtotal', 'discount_percent', 'discount_amount',
             'tax_amount', 'total_amount', 'paid_amount', 'remaining_amount',
+            'returns_total', 'net_total', 'net_remaining', 'refund_amount',
             'notes', 'internal_notes', 'return_for',
             'created_by', 'created_by_name', 'created_at', 'updated_at',
             'items'
         ]
         read_only_fields = ['id', 'invoice_number', 'subtotal', 'tax_amount', 'total_amount', 'created_at', 'updated_at']
+
+    def get_returns_total(self, obj):
+        from django.db.models import Sum
+        total = SalesReturn.objects.filter(original_invoice=obj).aggregate(s=Sum('total_amount'))['s']
+        return total or Decimal('0.00')
+
+    def get_net_total(self, obj):
+        net = (obj.total_amount or Decimal('0.00')) - self.get_returns_total(obj)
+        return net if net > 0 else Decimal('0.00')
+
+    def get_net_remaining(self, obj):
+        net_remaining = self.get_net_total(obj) - (obj.paid_amount or Decimal('0.00'))
+        return net_remaining if net_remaining > 0 else Decimal('0.00')
+
+    def get_refund_amount(self, obj):
+        refund = (obj.paid_amount or Decimal('0.00')) - self.get_net_total(obj)
+        return refund if refund > 0 else Decimal('0.00')
 
 
 class InvoiceItemCreateSerializer(serializers.ModelSerializer):

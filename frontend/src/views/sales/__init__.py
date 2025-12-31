@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView,
     QDoubleSpinBox, QScrollArea, QSplitter,
     QComboBox, QDialog, QTextEdit, QDateEdit,
-    QAbstractItemView
+    QAbstractItemView, QStyledItemDelegate, QAbstractSpinBox
 )
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont
@@ -33,6 +33,41 @@ from .returns import SalesReturnDialog, SalesReturnsView, InvoiceDetailsDialog
 
 # Import receipt printer
 from ...printing.receipt import ReceiptPrinter
+
+
+class _MoneyQtyDelegate(QStyledItemDelegate):
+    def __init__(self, decimals: int = 2, minimum: float = 0.0, maximum: float = 999999999.0, parent=None):
+        super().__init__(parent)
+        self._decimals = decimals
+        self._minimum = minimum
+        self._maximum = maximum
+
+    def createEditor(self, parent, option, index):
+        editor = QDoubleSpinBox(parent)
+        editor.setDecimals(self._decimals)
+        editor.setRange(self._minimum, self._maximum)
+        editor.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        editor.setMinimumHeight(30)
+        editor.setAlignment(Qt.AlignCenter)
+        editor.setKeyboardTracking(False)
+        editor.setStyleSheet(
+            f"background-color: {Colors.INPUT_BG_LIGHT}; border: 1px solid {Colors.INPUT_BORDER_LIGHT}; border-radius: 6px; padding: 4px 8px;"
+        )
+        return editor
+
+    def setEditorData(self, editor, index):
+        value = index.data(Qt.UserRole)
+        if value is None:
+            try:
+                value = float(str(index.data(Qt.DisplayRole)).replace(',', '').strip() or 0)
+            except Exception:
+                value = 0
+        editor.setValue(float(value))
+
+    def setModelData(self, editor, model, index):
+        value = float(editor.value())
+        model.setData(index, value, Qt.UserRole)
+        model.setData(index, f"{value:,.2f}", Qt.DisplayRole)
 
 
 class CustomersView(QWidget):
@@ -313,6 +348,7 @@ class InvoicesView(QWidget):
         """
         dialog = InvoiceFormDialog(parent=self)
         dialog.saved.connect(self.save_invoice)
+        dialog.print_requested.connect(self.save_and_print_invoice)
         dialog.exec()
     
     @handle_ui_error
@@ -331,6 +367,25 @@ class InvoicesView(QWidget):
             result = api.create_invoice(data)
             MessageDialog.success(self, "نجاح", "تم إنشاء الفاتورة بنجاح")
             self.refresh()
+        except ApiException as e:
+            MessageDialog.error(self, "خطأ", str(e))
+
+    @handle_ui_error
+    def save_and_print_invoice(self, data: dict):
+        try:
+            result = api.create_invoice(data)
+            MessageDialog.success(self, "نجاح", "تم إنشاء الفاتورة بنجاح")
+            self.refresh()
+
+            try:
+                printer = ReceiptPrinter()
+                print_result = printer.print_receipt(result)
+                if print_result is True:
+                    MessageDialog.success(self, "نجاح", "تم إرسال الفاتورة للطباعة")
+                elif isinstance(print_result, str):
+                    MessageDialog.info(self, "معلومات", f"تم حفظ الفاتورة في ملف: {print_result}")
+            except Exception as e:
+                MessageDialog.error(self, "خطأ في الطباعة", f"فشل في طباعة الفاتورة: {str(e)}")
         except ApiException as e:
             MessageDialog.error(self, "خطأ", str(e))
         
@@ -479,6 +534,12 @@ class InvoicesView(QWidget):
     
     def create_return_from_invoice(self, invoice: dict):
         """Create return from invoice details dialog."""
+        invoice_id = invoice.get('id') if isinstance(invoice, dict) else None
+        if invoice_id:
+            try:
+                invoice = api.get_invoice(invoice_id)
+            except ApiException:
+                pass
         self._open_return_dialog(invoice)
     
     def _open_return_dialog(self, invoice: dict):
@@ -1391,11 +1452,13 @@ class InvoiceFormDialog(QDialog):
     """
     
     saved = Signal(dict)
+    print_requested = Signal(dict)
     
     def __init__(self, data=None, parent=None):
         super().__init__(parent)
         self.data = data or {}
         self.items = []
+        self._updating_items_table = False
         self.customers_cache = []
         self.warehouses_cache = []
         self.products_cache = []
@@ -1410,8 +1473,8 @@ class InvoiceFormDialog(QDialog):
     def setup_ui(self):
         """Build the redesigned form UI with two columns and cards."""
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(24, 24, 24, 24)
-        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(12)
 
         # Header Section
         header_layout = QHBoxLayout()
@@ -1430,6 +1493,13 @@ class InvoiceFormDialog(QDialog):
         self.type_combo.setMinimumWidth(120)
         self.type_combo.currentIndexChanged.connect(self.on_type_changed)
         header_layout.addWidget(self.type_combo)
+
+        self.print_btn = QPushButton("🖨️ طباعة")
+        self.print_btn.setProperty("class", "secondary")
+        self.print_btn.setMinimumHeight(34)
+        self.print_btn.setMinimumWidth(110)
+        self.print_btn.clicked.connect(self.request_print)
+        header_layout.addWidget(self.print_btn)
         
         main_layout.addLayout(header_layout)
 
@@ -1513,8 +1583,8 @@ class InvoiceFormDialog(QDialog):
         # 2. Items Section Card
         items_card = Card()
         items_card_layout = QVBoxLayout(items_card)
-        items_card_layout.setContentsMargins(20, 20, 20, 20)
-        items_card_layout.setSpacing(16)
+        items_card_layout.setContentsMargins(16, 16, 16, 16)
+        items_card_layout.setSpacing(12)
 
         items_title = QLabel("📦 منتجات الفاتورة")
         items_title.setProperty("class", "h2")
@@ -1575,12 +1645,14 @@ class InvoiceFormDialog(QDialog):
         self.quantity_spin.setRange(0.01, 999999)
         self.quantity_spin.setValue(1)
         self.quantity_spin.setPrefix("الكمية: ")
+        self.quantity_spin.setMinimumHeight(34)
         entry_layout.addWidget(self.quantity_spin, 1)
 
         # Price
         self.price_spin = QDoubleSpinBox()
         self.price_spin.setRange(0, 999999999)
         self.price_spin.setPrefix("السعر: ")
+        self.price_spin.setMinimumHeight(34)
         entry_layout.addWidget(self.price_spin, 1)
 
         # Add button
@@ -1596,53 +1668,63 @@ class InvoiceFormDialog(QDialog):
         # Requirements: 3.1, 3.2 - Add unit column for unit selection display
         self.items_table = QTableWidget()
         self.items_table.setColumnCount(6)
-        self.items_table.setHorizontalHeaderLabels(['المنتج', 'الوحدة', 'الكمية', 'السعر', 'الإجمالي', ''])
-        self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.items_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
-        self.items_table.setColumnWidth(5, 40)
+        self.items_table.setHorizontalHeaderLabels(['المنتج', 'الوحدة', 'الكمية', 'السعر', 'الإجمالي', 'حذف'])
+        header = self.items_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.Fixed)  # Remove button column - fixed width
+        self.items_table.setColumnWidth(2, 120)
+        self.items_table.setColumnWidth(3, 140)
+        self.items_table.setColumnWidth(4, 140)
+        self.items_table.setColumnWidth(5, 50)  # Remove button column width - Requirements: 2.4
         self.items_table.verticalHeader().setVisible(False)
+        self.items_table.verticalHeader().setDefaultSectionSize(34)
         self.items_table.setAlternatingRowColors(True)  # Requirement 6.3: Alternating row colors
         self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.items_table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
         self.items_table.setShowGrid(False)
+        self.items_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.items_table.setItemDelegateForColumn(2, _MoneyQtyDelegate(decimals=2, minimum=0.01, maximum=999999, parent=self.items_table))
+        self.items_table.setItemDelegateForColumn(3, _MoneyQtyDelegate(decimals=2, minimum=0.0, maximum=999999999, parent=self.items_table))
+        self.items_table.itemChanged.connect(self.on_items_table_item_changed)
         # Requirements 6.1, 6.2, 6.3: Enhanced visual styling with distinct border, contrasting header, and alternating rows
         self.items_table.setStyleSheet(f"""
             QTableWidget {{
-                border: 2px solid {Colors.PRIMARY};
-                border-radius: 10px;
+                border: 1px solid {Colors.LIGHT_BORDER};
+                border-radius: 8px;
                 background-color: white;
                 gridline-color: transparent;
                 outline: none;
             }}
             QTableWidget::item {{
-                padding: 12px;
+                padding: 6px 10px;
                 border-bottom: 1px solid {Colors.LIGHT_BORDER};
             }}
             QTableWidget::item:alternate {{
                 background-color: {Colors.TABLE_ROW_ALT_LIGHT};
+            }}
+            QTableWidget::item:hover {{
+                background-color: {Colors.TABLE_HOVER_LIGHT};
             }}
             QTableWidget::item:selected {{
                 background-color: {Colors.PRIMARY}20;
                 color: {Colors.PRIMARY};
             }}
             QHeaderView::section {{
-                background-color: {Colors.PRIMARY};
-                color: white;
-                padding: 12px;
+                background-color: {Colors.TABLE_HEADER_LIGHT};
+                color: {Colors.LIGHT_TEXT};
+                padding: 10px 8px;
                 border: none;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                font-weight: bold;
-                font-size: 13px;
-            }}
-            QHeaderView::section:first {{
-                border-top-left-radius: 8px;
-            }}
-            QHeaderView::section:last {{
-                border-top-right-radius: 8px;
+                border-bottom: 1px solid {Colors.LIGHT_BORDER};
+                font-weight: 700;
+                font-size: 12px;
             }}
             QScrollBar:vertical {{
                 background: {Colors.LIGHT_BG};
-                width: 10px;
+                width: 8px;
                 border-radius: 5px;
                 margin: 0;
             }}
@@ -1658,7 +1740,8 @@ class InvoiceFormDialog(QDialog):
                 height: 0;
             }}
         """)
-        self.items_table.setMinimumHeight(300)
+        self.items_table.setMinimumHeight(220)
+        self.items_table.setMaximumHeight(360)
         # Enable vertical scrolling with scrollbar visible when needed
         self.items_table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.items_table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
@@ -1710,6 +1793,27 @@ class InvoiceFormDialog(QDialog):
 
         add_total_row("إجمالي المنتجات:", "subtotal_value")
         add_total_row("الضريبة (0%):", "tax_value")
+
+        discount_row = QHBoxLayout()
+        discount_label = QLabel("الخصم:")
+        discount_label.setProperty("class", "subtitle")
+        discount_row.addWidget(discount_label)
+        discount_row.addStretch()
+
+        self.discount_type_combo = QComboBox()
+        self.discount_type_combo.addItem("%", "percent")
+        self.discount_type_combo.addItem("ل.س", "amount")
+        self.discount_type_combo.setFixedWidth(70)
+        discount_row.addWidget(self.discount_type_combo)
+
+        self.discount_spin = QDoubleSpinBox()
+        self.discount_spin.setDecimals(2)
+        self.discount_spin.setRange(0, 100)
+        self.discount_spin.setSuffix(" %")
+        self.discount_spin.setFixedWidth(120)
+        discount_row.addWidget(self.discount_spin)
+
+        totals_layout.addLayout(discount_row)
         
         # Separator
         line = QFrame()
@@ -1773,6 +1877,9 @@ class InvoiceFormDialog(QDialog):
         
         # Connect paid amount change to update remaining
         self.paid_amount_spin.valueChanged.connect(self.update_remaining_amount)
+
+        self.discount_type_combo.currentIndexChanged.connect(self.on_discount_type_changed)
+        self.discount_spin.valueChanged.connect(lambda _: self._refresh_summary_totals())
         
         summary_card_layout.addStretch()
         
@@ -1883,8 +1990,41 @@ class InvoiceFormDialog(QDialog):
                         tax_rate = float(product.get('tax_rate', 15)) / 100
                         tax += item.get('total', 0) * tax_rate
                     break
-        grand_total = subtotal + tax
+
+        discount_amount = 0.0
+        if hasattr(self, 'discount_type_combo') and hasattr(self, 'discount_spin'):
+            mode = self.discount_type_combo.currentData()
+            value = float(self.discount_spin.value())
+            if mode == 'percent':
+                discount_amount = (subtotal * value) / 100.0
+            else:
+                discount_amount = value
+
+        if discount_amount < 0:
+            discount_amount = 0.0
+        if discount_amount > subtotal:
+            discount_amount = subtotal
+
+        grand_total = (subtotal - discount_amount) + tax
         return subtotal, tax, grand_total
+
+    def _refresh_summary_totals(self):
+        subtotal, tax, grand_total = self._calculate_totals()
+        self.subtotal_value.setText(f"{subtotal:,.2f} ل.س")
+        self.tax_value.setText(f"{tax:,.2f} ل.س")
+        self.total_value.setText(f"{grand_total:,.2f} ل.س")
+        self._update_cash_paid_amount()
+        self.update_remaining_amount()
+
+    def on_discount_type_changed(self, index: int):
+        mode = self.discount_type_combo.currentData()
+        if mode == 'amount':
+            self.discount_spin.setRange(0, 999999999)
+            self.discount_spin.setSuffix(" ل.س")
+        else:
+            self.discount_spin.setRange(0, 100)
+            self.discount_spin.setSuffix(" %")
+        self._refresh_summary_totals()
     
     def set_full_payment(self):
         """Set paid amount to full invoice total (including tax)."""
@@ -2093,47 +2233,129 @@ class InvoiceFormDialog(QDialog):
     
     def update_items_table(self):
         """Update items table display."""
+        self._updating_items_table = True
+        self.items_table.blockSignals(True)
         self.items_table.setRowCount(len(self.items))
         
         for i, item in enumerate(self.items):
             # Product name
-            self.items_table.setItem(i, 0, QTableWidgetItem(item['product_name']))
+            product_item = QTableWidgetItem(item['product_name'])
+            product_item.setFlags(product_item.flags() & ~Qt.ItemIsEditable)
+            self.items_table.setItem(i, 0, product_item)
             
             # Unit name - Requirements: 3.5 - Display selected unit name/symbol
             unit_display = item.get('unit_name', '') or item.get('unit_symbol', '') or '-'
-            self.items_table.setItem(i, 1, QTableWidgetItem(unit_display))
+            unit_item = QTableWidgetItem(unit_display)
+            unit_item.setFlags(unit_item.flags() & ~Qt.ItemIsEditable)
+            unit_item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(i, 1, unit_item)
             
             # Quantity
-            self.items_table.setItem(i, 2, QTableWidgetItem(f"{item['quantity']:.2f}"))
+            qty_val = float(item.get('quantity', 0))
+            qty_item = QTableWidgetItem(f"{qty_val:,.2f}")
+            qty_item.setData(Qt.UserRole, qty_val)
+            qty_item.setTextAlignment(Qt.AlignCenter)
+            qty_item.setFlags(qty_item.flags() | Qt.ItemIsEditable)
+            self.items_table.setItem(i, 2, qty_item)
             
             # Price
-            self.items_table.setItem(i, 3, QTableWidgetItem(f"{item['unit_price']:,.2f}"))
+            price_val = float(item.get('unit_price', 0))
+            price_item = QTableWidgetItem(f"{price_val:,.2f}")
+            price_item.setData(Qt.UserRole, price_val)
+            price_item.setTextAlignment(Qt.AlignCenter)
+            price_item.setFlags(price_item.flags() | Qt.ItemIsEditable)
+            self.items_table.setItem(i, 3, price_item)
             
             # Total - Requirements: 3.3 - Calculate line total
-            self.items_table.setItem(i, 4, QTableWidgetItem(f"{item['total']:,.2f}"))
+            total_item = QTableWidgetItem(f"{float(item.get('total', 0)):,.2f}")
+            total_item.setTextAlignment(Qt.AlignCenter)
+            total_item.setFlags(total_item.flags() & ~Qt.ItemIsEditable)
+            self.items_table.setItem(i, 4, total_item)
             
-            # Delete button
+            # Delete button - Enhanced styling with hover effects
             delete_btn = QPushButton("🗑️")
-            delete_btn.setFixedSize(30, 30)
-            delete_btn.setStyleSheet("border: none; background: transparent;")
+            delete_btn.setFixedSize(32, 32)  # Slightly larger for better clickability
+            delete_btn.setToolTip("حذف المنتج")  # Arabic tooltip
+            delete_btn.setStyleSheet(f"""
+                QPushButton {{
+                    border: none;
+                    background: transparent;
+                    border-radius: 16px;
+                    font-size: 14px;
+                    color: {Colors.DANGER};
+                }}
+                QPushButton:hover {{
+                    background-color: {Colors.DANGER}15;
+                    border: 1px solid {Colors.DANGER}30;
+                }}
+                QPushButton:pressed {{
+                    background-color: {Colors.DANGER}25;
+                }}
+            """)
             delete_btn.clicked.connect(lambda _, idx=i: self.remove_item(idx))
             self.items_table.setCellWidget(i, 5, delete_btn)
         
+        self.items_table.blockSignals(False)
+        self._updating_items_table = False
+        
         # Update summary with tax calculation
-        subtotal, tax, grand_total = self._calculate_totals()
-        self.subtotal_value.setText(f"{subtotal:,.2f} ل.س")
-        self.tax_value.setText(f"{tax:,.2f} ل.س")
-        self.total_value.setText(f"{grand_total:,.2f} ل.س")
-        
-        # Also update cash paid amount if applicable
-        self._update_cash_paid_amount()
-        
-        # Update remaining amount display
-        self.update_remaining_amount()
+        self._refresh_summary_totals()
         
         # Scroll to show the last added item
         if self.items:
             self.items_table.scrollToBottom()
+
+    def on_items_table_item_changed(self, changed: QTableWidgetItem):
+        if self._updating_items_table:
+            return
+        if changed is None:
+            return
+        row = changed.row()
+        col = changed.column()
+        if not (0 <= row < len(self.items)):
+            return
+        if col not in (2, 3):
+            return
+
+        try:
+            numeric = changed.data(Qt.UserRole)
+            if numeric is None:
+                numeric = float(str(changed.text()).replace(',', '').strip() or 0)
+            numeric = float(numeric)
+        except Exception:
+            numeric = 0.0
+
+        if col == 2:
+            if numeric <= 0:
+                numeric = 0.01
+            self.items[row]['quantity'] = numeric
+        elif col == 3:
+            if numeric < 0:
+                numeric = 0.0
+            self.items[row]['unit_price'] = numeric
+
+        self.items[row]['total'] = float(self.items[row].get('quantity', 0)) * float(self.items[row].get('unit_price', 0))
+
+        self._updating_items_table = True
+        self.items_table.blockSignals(True)
+        if col == 2:
+            changed.setData(Qt.UserRole, float(self.items[row]['quantity']))
+            changed.setText(f"{float(self.items[row]['quantity']):,.2f}")
+        elif col == 3:
+            changed.setData(Qt.UserRole, float(self.items[row]['unit_price']))
+            changed.setText(f"{float(self.items[row]['unit_price']):,.2f}")
+
+        total_cell = self.items_table.item(row, 4)
+        if total_cell is None:
+            total_cell = QTableWidgetItem()
+            total_cell.setTextAlignment(Qt.AlignCenter)
+            total_cell.setFlags(total_cell.flags() & ~Qt.ItemIsEditable)
+            self.items_table.setItem(row, 4, total_cell)
+        total_cell.setText(f"{float(self.items[row]['total']):,.2f}")
+        self.items_table.blockSignals(False)
+        self._updating_items_table = False
+
+        self._refresh_summary_totals()
     
     def remove_item(self, index: int):
         """Remove item from the list."""
@@ -2198,6 +2420,15 @@ class InvoiceFormDialog(QDialog):
             'payment_method': 'cash', # Default to cash for the initial payment
             'confirm': True # Atomic confirmation
         }
+
+        mode = self.discount_type_combo.currentData() if hasattr(self, 'discount_type_combo') else 'percent'
+        discount_val = float(self.discount_spin.value()) if hasattr(self, 'discount_spin') else 0.0
+        if mode == 'amount':
+            data['discount_percent'] = 0
+            data['discount_amount'] = discount_val
+        else:
+            data['discount_percent'] = discount_val
+            data['discount_amount'] = 0
         
         customer_id = self.customer_combo.currentData()
         if customer_id:
@@ -2216,6 +2447,11 @@ class InvoiceFormDialog(QDialog):
         """Emit saved signal with form data."""
         if self.validate():
             self.saved.emit(self.get_data())
+            self.accept()
+
+    def request_print(self):
+        if self.validate():
+            self.print_requested.emit(self.get_data())
             self.accept()
 
 

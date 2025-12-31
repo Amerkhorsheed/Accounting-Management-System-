@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLineEdit, QFrame, QDialog,
     QTableWidget, QTableWidgetItem, QHeaderView,
     QDoubleSpinBox, QScrollArea, QTextEdit,
-    QDateEdit, QAbstractItemView, QComboBox
+    QDateEdit, QAbstractItemView, QComboBox, QAbstractSpinBox
 )
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont
@@ -48,22 +48,22 @@ class SalesReturnDialog(QDialog):
         self.return_items = []  # Will hold return item data
         
         self.setWindowTitle(f"إنشاء مرتجع - فاتورة رقم {invoice.get('invoice_number', '')}")
-        self.setMinimumWidth(900)
-        self.setMinimumHeight(600)
+        self.setWindowState(Qt.WindowMaximized)
+        self.setMinimumSize(1200, 800)
         self.setup_ui()
         self.load_invoice_items()
     
     def setup_ui(self):
         """Initialize dialog UI."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         
         # Header with invoice info
         header_frame = QFrame()
-        header_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+        header_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 10px;")
         header_layout = QVBoxLayout(header_frame)
-        header_layout.setSpacing(8)
+        header_layout.setSpacing(6)
         
         # Invoice info row
         info_row = QHBoxLayout()
@@ -89,6 +89,24 @@ class SalesReturnDialog(QDialog):
         header_layout.addLayout(info_row)
         
         layout.addWidget(header_frame)
+
+        main_row = QHBoxLayout()
+        main_row.setSpacing(16)
+
+        left_frame = QFrame()
+        left_layout = QVBoxLayout(left_frame)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
+
+        right_card = Card()
+        right_card.setFixedWidth(380)
+        right_layout = QVBoxLayout(right_card)
+        right_layout.setContentsMargins(16, 16, 16, 16)
+        right_layout.setSpacing(12)
+
+        main_row.addWidget(left_frame, 1)
+        main_row.addWidget(right_card)
+        layout.addLayout(main_row)
         
         # Return date
         date_row = QHBoxLayout()
@@ -99,12 +117,12 @@ class SalesReturnDialog(QDialog):
         self.return_date_edit.setMaximumWidth(150)
         date_row.addWidget(self.return_date_edit)
         date_row.addStretch()
-        layout.addLayout(date_row)
+        right_layout.addLayout(date_row)
         
         # Items table
         items_label = QLabel("📦 منتجات الفاتورة - حدد الكميات المراد إرجاعها")
         items_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
-        layout.addWidget(items_label)
+        left_layout.addWidget(items_label)
         
         # Requirements: 5.2 - Display original invoice items with returnable quantities
         self.items_table = QTableWidget()
@@ -113,20 +131,84 @@ class SalesReturnDialog(QDialog):
             'المنتج', 'الوحدة', 'الكمية الأصلية', 'المرتجع سابقاً', 
             'المتاح للإرجاع', 'كمية الإرجاع', 'الإجمالي'
         ])
-        self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.items_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
-        self.items_table.setColumnWidth(5, 120)
+        header = self.items_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
+        header.setSectionResizeMode(6, QHeaderView.Fixed)
+        self.items_table.setColumnWidth(2, 120)
+        self.items_table.setColumnWidth(3, 120)
+        self.items_table.setColumnWidth(4, 130)
+        self.items_table.setColumnWidth(5, 140)
+        self.items_table.setColumnWidth(6, 140)
         self.items_table.verticalHeader().setVisible(False)
         self.items_table.setAlternatingRowColors(True)
         self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.items_table.setMinimumHeight(250)
-        layout.addWidget(self.items_table)
+        self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.items_table.setShowGrid(False)
+        self.items_table.verticalHeader().setDefaultSectionSize(34)
+        self.items_table.setMinimumHeight(240)
+        self.items_table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.items_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.items_table.setStyleSheet(f"""
+            QTableWidget {{
+                border: 1px solid {Colors.LIGHT_BORDER};
+                border-radius: 8px;
+                background-color: white;
+                gridline-color: transparent;
+                outline: none;
+            }}
+            QTableWidget::item {{
+                padding: 6px 10px;
+                border-bottom: 1px solid {Colors.LIGHT_BORDER};
+            }}
+            QTableWidget::item:alternate {{
+                background-color: {Colors.TABLE_ROW_ALT_LIGHT};
+            }}
+            QTableWidget::item:hover {{
+                background-color: {Colors.TABLE_HOVER_LIGHT};
+            }}
+            QTableWidget::item:selected {{
+                background-color: {Colors.PRIMARY}20;
+                color: {Colors.PRIMARY};
+            }}
+            QHeaderView::section {{
+                background-color: {Colors.TABLE_HEADER_LIGHT};
+                color: {Colors.LIGHT_TEXT};
+                padding: 10px 8px;
+                border: none;
+                border-bottom: 1px solid {Colors.LIGHT_BORDER};
+                font-weight: 700;
+                font-size: 12px;
+            }}
+            QScrollBar:vertical {{
+                background: {Colors.LIGHT_BG};
+                width: 8px;
+                border-radius: 5px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {Colors.PRIMARY_LIGHT};
+                border-radius: 5px;
+                min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {Colors.PRIMARY};
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0;
+            }}
+        """)
+        left_layout.addWidget(self.items_table)
         
         # Reason section - Requirements: 5.8 - Reason is required
         reason_frame = QFrame()
-        reason_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 12px;")
+        reason_frame.setStyleSheet(f"background-color: {Colors.LIGHT_BG}; border-radius: 8px; padding: 10px;")
         reason_layout = QVBoxLayout(reason_frame)
-        reason_layout.setSpacing(8)
+        reason_layout.setSpacing(6)
         
         reason_label = QLabel("📝 سبب الإرجاع (مطلوب) *")
         reason_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
@@ -135,7 +217,7 @@ class SalesReturnDialog(QDialog):
         
         self.reason_input = QTextEdit()
         self.reason_input.setPlaceholderText("أدخل سبب الإرجاع...")
-        self.reason_input.setMaximumHeight(80)
+        self.reason_input.setMaximumHeight(90)
         reason_layout.addWidget(self.reason_input)
         
         # Notes (optional)
@@ -145,10 +227,10 @@ class SalesReturnDialog(QDialog):
         
         self.notes_input = QTextEdit()
         self.notes_input.setPlaceholderText("أدخل أي ملاحظات إضافية...")
-        self.notes_input.setMaximumHeight(60)
+        self.notes_input.setMaximumHeight(70)
         reason_layout.addWidget(self.notes_input)
         
-        layout.addWidget(reason_frame)
+        right_layout.addWidget(reason_frame)
         
         # Totals section - Requirements: 5.7 - Calculate return totals
         totals_frame = QFrame()
@@ -158,56 +240,49 @@ class SalesReturnDialog(QDialog):
             border-radius: 8px; 
             padding: 16px;
         """)
-        totals_layout = QHBoxLayout(totals_frame)
-        
-        totals_layout.addStretch()
-        
-        # Return subtotal
-        subtotal_container = QVBoxLayout()
+        totals_layout = QVBoxLayout(totals_frame)
+        totals_layout.setSpacing(10)
+
+        subtotal_row = QHBoxLayout()
         subtotal_label = QLabel("إجمالي المرتجع:")
         subtotal_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY))
-        subtotal_container.addWidget(subtotal_label)
+        subtotal_row.addWidget(subtotal_label)
+        subtotal_row.addStretch()
         self.return_subtotal_label = QLabel("0.00 ل.س")
         self.return_subtotal_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H2, QFont.Bold))
         self.return_subtotal_label.setStyleSheet(f"color: {Colors.PRIMARY};")
-        subtotal_container.addWidget(self.return_subtotal_label)
-        totals_layout.addLayout(subtotal_container)
-        
-        totals_layout.addSpacing(40)
-        
-        # Tax
-        tax_container = QVBoxLayout()
+        subtotal_row.addWidget(self.return_subtotal_label)
+        totals_layout.addLayout(subtotal_row)
+
+        tax_row = QHBoxLayout()
         tax_label = QLabel("الضريبة:")
         tax_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY))
-        tax_container.addWidget(tax_label)
+        tax_row.addWidget(tax_label)
+        tax_row.addStretch()
         self.return_tax_label = QLabel("0.00 ل.س")
         self.return_tax_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
-        tax_container.addWidget(self.return_tax_label)
-        totals_layout.addLayout(tax_container)
-        
-        totals_layout.addSpacing(40)
-        
-        # Grand total
-        total_container = QVBoxLayout()
+        tax_row.addWidget(self.return_tax_label)
+        totals_layout.addLayout(tax_row)
+
+        total_row = QHBoxLayout()
         grand_label = QLabel("الإجمالي الكلي:")
-        grand_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY))
-        total_container.addWidget(grand_label)
+        grand_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
+        total_row.addWidget(grand_label)
+        total_row.addStretch()
         self.return_total_label = QLabel("0.00 ل.س")
         self.return_total_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H1, QFont.Bold))
         self.return_total_label.setStyleSheet(f"color: {Colors.SUCCESS};")
-        total_container.addWidget(self.return_total_label)
-        totals_layout.addLayout(total_container)
+        total_row.addWidget(self.return_total_label)
+        totals_layout.addLayout(total_row)
         
-        totals_layout.addStretch()
-        
-        layout.addWidget(totals_frame)
+        right_layout.addWidget(totals_frame)
         
         # Error label
         self.error_label = QLabel()
         self.error_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: bold;")
         self.error_label.setAlignment(Qt.AlignCenter)
         self.error_label.setVisible(False)
-        layout.addWidget(self.error_label)
+        right_layout.addWidget(self.error_label)
         
         # Buttons
         buttons_layout = QHBoxLayout()
@@ -227,7 +302,7 @@ class SalesReturnDialog(QDialog):
         save_btn.clicked.connect(self.save)
         buttons_layout.addWidget(save_btn)
         
-        layout.addLayout(buttons_layout)
+        right_layout.addLayout(buttons_layout)
     
     def load_invoice_items(self):
         """Load invoice items into the table."""
@@ -245,15 +320,20 @@ class SalesReturnDialog(QDialog):
             
             # Original quantity
             original_qty = float(item.get('quantity', 0))
-            self.items_table.setItem(row, 2, QTableWidgetItem(f"{original_qty:.2f}"))
+            original_item = QTableWidgetItem(f"{original_qty:.2f}")
+            original_item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(row, 2, original_item)
             
             # Already returned quantity
             returned_qty = float(item.get('returned_quantity', 0))
-            self.items_table.setItem(row, 3, QTableWidgetItem(f"{returned_qty:.2f}"))
+            returned_item = QTableWidgetItem(f"{returned_qty:.2f}")
+            returned_item.setTextAlignment(Qt.AlignCenter)
+            self.items_table.setItem(row, 3, returned_item)
             
             # Available for return - Requirements: 5.3 - Validate return quantity
             available_qty = original_qty - returned_qty
             available_item = QTableWidgetItem(f"{available_qty:.2f}")
+            available_item.setTextAlignment(Qt.AlignCenter)
             if available_qty <= 0:
                 available_item.setForeground(Qt.red)
             self.items_table.setItem(row, 4, available_item)
@@ -264,6 +344,11 @@ class SalesReturnDialog(QDialog):
             qty_spinner.setDecimals(2)
             qty_spinner.setValue(0)
             qty_spinner.setSingleStep(1)
+            qty_spinner.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            qty_spinner.setMinimumHeight(30)
+            qty_spinner.setStyleSheet(
+                f"background-color: {Colors.INPUT_BG_LIGHT}; border: 1px solid {Colors.INPUT_BORDER_LIGHT}; border-radius: 6px; padding: 4px 8px;"
+            )
             qty_spinner.valueChanged.connect(lambda v, r=row: self.on_quantity_changed(r, v))
             self.items_table.setCellWidget(row, 5, qty_spinner)
             self.quantity_spinners.append(qty_spinner)
@@ -693,16 +778,43 @@ class InvoiceDetailsDialog(QDialog):
         right_col = QVBoxLayout()
         right_col.setSpacing(8)
         total = float(self.invoice.get('total_amount', 0))
+        returns_total = float(self.invoice.get('returns_total', 0))
+        net_total = float(self.invoice.get('net_total', max(0, total - returns_total)))
         paid = float(self.invoice.get('paid_amount', 0))
         remaining = float(self.invoice.get('remaining_amount', 0))
+        net_remaining = float(self.invoice.get('net_remaining', max(0, net_total - paid)))
+        refund_amount = float(self.invoice.get('refund_amount', max(0, paid - net_total)))
         
         total_label = QLabel(f"💰 الإجمالي: {total:,.2f} ل.س")
         total_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
         right_col.addWidget(total_label)
+
+        if returns_total > 0:
+            returns_label = QLabel(f"↩️ إجمالي المرتجعات: {returns_total:,.2f} ل.س")
+            returns_label.setStyleSheet(f"color: {Colors.DANGER};")
+            right_col.addWidget(returns_label)
+
+            net_total_label = QLabel(f"🧾 الصافي بعد المرتجعات: {net_total:,.2f} ل.س")
+            net_total_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
+            net_total_label.setStyleSheet(f"color: {Colors.PRIMARY};")
+            right_col.addWidget(net_total_label)
         
         paid_label = QLabel(f"✅ المدفوع: {paid:,.2f} ل.س")
         paid_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         right_col.addWidget(paid_label)
+
+        if returns_total > 0:
+            net_remaining_label = QLabel(f"⏳ المتبقي بعد المرتجعات: {net_remaining:,.2f} ل.س")
+            if net_remaining > 0:
+                net_remaining_label.setStyleSheet(f"color: {Colors.WARNING};")
+            else:
+                net_remaining_label.setStyleSheet(f"color: {Colors.SUCCESS};")
+            right_col.addWidget(net_remaining_label)
+
+            if refund_amount > 0:
+                refund_label = QLabel(f"💸 مستحق للعميل (Refund): {refund_amount:,.2f} ل.س")
+                refund_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: bold;")
+                right_col.addWidget(refund_label)
         
         remaining_label = QLabel(f"⏳ المتبقي: {remaining:,.2f} ل.س")
         if remaining > 0:
@@ -721,9 +833,9 @@ class InvoiceDetailsDialog(QDialog):
         layout.addWidget(items_label)
         
         self.items_table = QTableWidget()
-        self.items_table.setColumnCount(6)
+        self.items_table.setColumnCount(8)
         self.items_table.setHorizontalHeaderLabels([
-            'المنتج', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'
+            'المنتج', 'الوحدة', 'الكمية', 'المرتجع', 'المتاح', 'السعر', 'الخصم', 'الإجمالي'
         ])
         self.items_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.items_table.verticalHeader().setVisible(False)
@@ -739,11 +851,22 @@ class InvoiceDetailsDialog(QDialog):
             self.items_table.setItem(row, 0, QTableWidgetItem(item.get('product_name', '')))
             unit_name = item.get('unit_name', '') or item.get('unit_symbol', '') or '-'
             self.items_table.setItem(row, 1, QTableWidgetItem(unit_name))
-            self.items_table.setItem(row, 2, QTableWidgetItem(f"{float(item.get('quantity', 0)):.2f}"))
-            self.items_table.setItem(row, 3, QTableWidgetItem(f"{float(item.get('unit_price', 0)):,.2f}"))
+            original_qty = float(item.get('quantity', 0))
+            returned_qty = float(item.get('returned_quantity', 0))
+            available_qty = original_qty - returned_qty
+
+            self.items_table.setItem(row, 2, QTableWidgetItem(f"{original_qty:.2f}"))
+            self.items_table.setItem(row, 3, QTableWidgetItem(f"{returned_qty:.2f}"))
+
+            available_item = QTableWidgetItem(f"{available_qty:.2f}")
+            if available_qty <= 0:
+                available_item.setForeground(Qt.red)
+            self.items_table.setItem(row, 4, available_item)
+
+            self.items_table.setItem(row, 5, QTableWidgetItem(f"{float(item.get('unit_price', 0)):,.2f}"))
             discount = float(item.get('discount_percent', 0))
-            self.items_table.setItem(row, 4, QTableWidgetItem(f"{discount:.1f}%"))
-            self.items_table.setItem(row, 5, QTableWidgetItem(f"{float(item.get('total', 0)):,.2f}"))
+            self.items_table.setItem(row, 6, QTableWidgetItem(f"{discount:.1f}%"))
+            self.items_table.setItem(row, 7, QTableWidgetItem(f"{float(item.get('total', 0)):,.2f}"))
         
         layout.addWidget(self.items_table)
         

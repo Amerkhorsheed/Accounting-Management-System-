@@ -8,7 +8,7 @@ from django.db.models import Sum, Count, Avg, F, Q, DecimalField, ExpressionWrap
 from django.db.models.functions import TruncDate, TruncMonth
 from datetime import date, timedelta
 
-from apps.sales.models import Invoice, InvoiceItem, Customer, Payment, SalesReturn
+from apps.sales.models import Invoice, InvoiceItem, Customer, Payment, SalesReturn, SalesReturnItem
 from apps.purchases.models import PurchaseOrder, Supplier
 from apps.expenses.models import Expense
 from apps.inventory.models import Product, Stock, StockMovement
@@ -91,6 +91,20 @@ class ReportService:
         
         revenue = sum(item.total for item in invoice_items)
         cost = sum(item.cost_price * item.quantity for item in invoice_items)
+
+        period_returns = SalesReturn.objects.filter(
+            return_date__gte=start_date,
+            return_date__lte=end_date
+        )
+        return_revenue = sum(r.total_amount for r in period_returns)
+
+        return_items = SalesReturnItem.objects.filter(
+            sales_return__in=period_returns
+        ).select_related('invoice_item')
+        return_cost = sum(ri.invoice_item.cost_price * ri.quantity for ri in return_items)
+
+        revenue -= return_revenue
+        cost -= return_cost
         gross_profit = revenue - cost
         
         # Net profit (gross - expenses)
@@ -272,6 +286,20 @@ class ReportService:
             revenue += item.total
             cost_of_goods += item.cost_price * item.quantity
         
+        period_returns = SalesReturn.objects.filter(
+            return_date__gte=start_date,
+            return_date__lte=end_date
+        )
+        return_revenue = sum(r.total_amount for r in period_returns)
+
+        return_items = SalesReturnItem.objects.filter(
+            sales_return__in=period_returns
+        ).select_related('invoice_item')
+        return_cost = sum(ri.invoice_item.cost_price * ri.quantity for ri in return_items)
+
+        revenue -= return_revenue
+        cost_of_goods -= return_cost
+
         gross_profit = revenue - cost_of_goods
         
         # Expenses
@@ -298,13 +326,27 @@ class ReportService:
             cost=Sum(ExpressionWrapper(F('quantity') * F('cost_price'), output_field=DecimalField()))
         ).order_by('-revenue')
         
+        return_by_category = SalesReturnItem.objects.filter(
+            sales_return__in=period_returns
+        ).values('product__category__name').annotate(
+            revenue=Sum(ExpressionWrapper(F('quantity') * F('invoice_item__unit_price'), output_field=DecimalField())),
+            cost=Sum(ExpressionWrapper(F('quantity') * F('invoice_item__cost_price'), output_field=DecimalField()))
+        )
+        return_by_category_map = {
+            r['product__category__name']: r for r in return_by_category
+        }
+
         categories = []
         for cat in profit_by_category:
-            profit = (cat['revenue'] or Decimal('0')) - (cat['cost'] or Decimal('0'))
+            category_name = cat['product__category__name'] or 'بدون فئة'
+            ret = return_by_category_map.get(cat['product__category__name'])
+            rev = (cat['revenue'] or Decimal('0')) - ((ret or {}).get('revenue') or Decimal('0'))
+            cst = (cat['cost'] or Decimal('0')) - ((ret or {}).get('cost') or Decimal('0'))
+            profit = rev - cst
             categories.append({
-                'category': cat['product__category__name'] or 'بدون فئة',
-                'revenue': cat['revenue'] or Decimal('0'),
-                'cost': cat['cost'] or Decimal('0'),
+                'category': category_name,
+                'revenue': rev,
+                'cost': cst,
                 'profit': profit
             })
         

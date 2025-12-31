@@ -172,14 +172,18 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def return_items(self, request, pk=None):
         """Create a sales return."""
-        sales_return = SalesService.create_sales_return(
-            invoice_id=pk,
-            return_date=request.data.get('return_date'),
-            items=request.data.get('items', []),
-            reason=request.data.get('reason'),
-            notes=request.data.get('notes'),
-            user=request.user
+        try:
+            payload = request.data.copy()
+        except Exception:
+            payload = dict(request.data)
+        payload['original_invoice'] = pk
+
+        serializer = SalesReturnCreateSerializer(
+            data=payload,
+            context={'request': request}
         )
+        serializer.is_valid(raise_exception=True)
+        sales_return = serializer.save()
         return Response(SalesReturnSerializer(sales_return).data)
 
     @handle_view_error

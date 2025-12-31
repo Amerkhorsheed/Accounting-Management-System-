@@ -2789,3 +2789,375 @@ Traceback (most recent call last):
   File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
     raise ApiException(
 src.services.api.ApiException: خطأ في البيانات المدخلة: الكمية المتاحة من 'mast' غير كافية لإتمام العملية. الكمية المطلوبة: 1، الكمية المتاحة: 0. يرجى تقليل الكمية المطلوبة أو زيادة المخزون.
+[2025-12-30 18:06:03] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in post: [ApiException] الباركود: النموذج منتج والحقل الباركود موجود مسبقاً.
+Context:
+  Function: post
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 356, in post
+    return self._request('POST', endpoint, json=data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: الباركود: النموذج منتج والحقل الباركود موجود مسبقاً.
+[2025-12-30 18:11:41] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:11:41] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_statement: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: _load_statement
+  Class: CustomerStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: OPERATION_FAILED
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\customer_statement.py", line 292, in _load_statement
+    self.statement_data = api.get_customer_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 471, in get_customer_statement
+    return self.get(f'sales/customers/{id}/statement/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:11:51] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:11:51] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_statement: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: _load_statement
+  Class: CustomerStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: OPERATION_FAILED
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\customer_statement.py", line 292, in _load_statement
+    self.statement_data = api.get_customer_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 471, in get_customer_statement
+    return self.get(f'sales/customers/{id}/statement/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:12:04] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:12:04] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_statement: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: _load_statement
+  Class: CustomerStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: OPERATION_FAILED
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\customer_statement.py", line 292, in _load_statement
+    self.statement_data = api.get_customer_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 471, in get_customer_statement
+    return self.get(f'sales/customers/{id}/statement/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:12:19] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:12:19] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_statement: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: _load_statement
+  Class: CustomerStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: OPERATION_FAILED
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\customer_statement.py", line 292, in _load_statement
+    self.statement_data = api.get_customer_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 471, in get_customer_statement
+    return self.get(f'sales/customers/{id}/statement/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:12:26] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-30 18:12:26] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_statement: [ApiException] خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+Context:
+  Function: _load_statement
+  Class: CustomerStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: OPERATION_FAILED
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\customer_statement.py", line 292, in _load_statement
+    self.statement_data = api.get_customer_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 471, in get_customer_statement
+    return self.get(f'sales/customers/{id}/statement/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: خطأ في البيانات المدخلة: حدث خطأ غير متوقع أثناء تنفيذ العملية. يرجى المحاولة مرة أخرى.
+[2025-12-31 14:02:45] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2025-12-31 14:02:45] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: refresh
+  Class: DashboardView
+  View: 
+  Error Type: ApiException
+  Error Code: API_ERROR
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\dashboard\__init__.py", line 273, in refresh
+    data = api.get_dashboard()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 558, in get_dashboard
+    return self.get('reports/dashboard/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
