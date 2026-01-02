@@ -14,6 +14,7 @@ from PySide6.QtGui import QFont, QCursor
 from ...config import Colors, Fonts, config
 from ...widgets.cards import StatCard, Card
 from ...services.api import api, ApiException
+from ...services.auth import AuthService
 from ...utils.error_handler import handle_ui_error
 
 
@@ -50,11 +51,10 @@ class DashboardView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
-        
+
         # Setup auto-refresh timer (30 seconds)
         self.refresh_timer = QTimer(self)
-        self.refresh_timer.timeout.connect(self.refresh)
-        self.refresh_timer.start(30000)
+        self.refresh_timer.timeout.connect(self._on_refresh_timer)
         
     def setup_ui(self):
         """Initialize dashboard UI."""
@@ -272,6 +272,19 @@ class DashboardView(QWidget):
         # Load dashboard data
         data = api.get_dashboard()
         self.update_stats(data)
+
+    def _on_refresh_timer(self):
+        if not AuthService.is_authenticated():
+            return
+        self.refresh()
+
+    def start_auto_refresh(self):
+        if not self.refresh_timer.isActive():
+            self.refresh_timer.start(30000)
+
+    def stop_auto_refresh(self):
+        if self.refresh_timer.isActive():
+            self.refresh_timer.stop()
     
     def _on_receivables_clicked(self):
         """

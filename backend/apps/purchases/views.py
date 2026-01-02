@@ -170,11 +170,19 @@ class GRNViewSet(viewsets.ReadOnlyModelViewSet):
 class SupplierPaymentViewSet(viewsets.ModelViewSet):
     """ViewSet for SupplierPayment management."""
     
-    queryset = SupplierPayment.objects.filter(is_deleted=False).select_related('supplier')
+    queryset = SupplierPayment.objects.filter(is_deleted=False).select_related(
+        'supplier', 'purchase_order', 'created_by'
+    )
     serializer_class = SupplierPaymentSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['supplier', 'payment_method', 'purchase_order']
+    filterset_fields = {
+        'supplier': ['exact'],
+        'payment_method': ['exact'],
+        'purchase_order': ['exact'],
+        'transaction_currency': ['exact'],
+        'payment_date': ['gte', 'lte'],
+    }
     search_fields = ['payment_number', 'supplier__name', 'reference']
     ordering = ['-payment_date', '-payment_number']
 

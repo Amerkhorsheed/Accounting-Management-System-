@@ -173,7 +173,10 @@ def get_daily_fx(rate_date: date):
 
     fx = DailyExchangeRate.objects.filter(rate_date=rate_date).first()
     if not fx:
-        raise ValidationException('سعر الصرف لليوم غير موجود', field='fx_rate_date')
+        # Fallback to latest available exchange rate
+        fx = DailyExchangeRate.objects.order_by('-rate_date').first()
+        if not fx:
+            raise ValidationException('لا يوجد سعر صرف محدد في النظام', field='fx_rate_date')
     return fx.usd_to_syp_old, fx.usd_to_syp_new
 
 

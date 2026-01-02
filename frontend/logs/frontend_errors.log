@@ -3640,3 +3640,424 @@ Traceback (most recent call last):
   File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
     raise ApiException(
 src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 15:36:31] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 15:36:31] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_suppliers: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: _load_suppliers
+  Class: SupplierStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: API_ERROR
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\supplier_statement.py", line 165, in _load_suppliers
+    response = api.get_suppliers()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 546, in get_suppliers
+    return self.get('purchases/suppliers/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 15:37:39] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 15:37:39] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in _load_suppliers: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: _load_suppliers
+  Class: SupplierStatementView
+  View: 
+  Error Type: ApiException
+  Error Code: API_ERROR
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\supplier_statement.py", line 165, in _load_suppliers
+    response = api.get_suppliers()
+               ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 546, in get_suppliers
+    return self.get('purchases/suppliers/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 346, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 133, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 208, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 16:14:43] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [AttributeError] type object 'Colors' has no attribute 'TEXT_SECONDARY'
+Context:
+  Function: refresh
+  Class: ExpensesReportView
+  View: 
+  Error Type: AttributeError
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\expenses.py", line 245, in refresh
+    self._load_report()
+  File "C:\ERP\frontend\src\views\reports\expenses.py", line 274, in _load_report
+    self._update_category_breakdown()
+  File "C:\ERP\frontend\src\views\reports\expenses.py", line 312, in _update_category_breakdown
+    no_data_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; padding: 20px;")
+                                          ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: type object 'Colors' has no attribute 'TEXT_SECONDARY'. Did you mean: 'DARK_TEXT_SECONDARY'?
+[2026-01-02 17:08:00] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 17:08:00] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in load_backups: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: load_backups
+  Class: BackupRestoreView
+  View: 
+  Error Type: ApiException
+  Error Code: API_ERROR
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\settings\backup_restore.py", line 119, in load_backups
+    resp = api.list_backups()
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 433, in list_backups
+    return self.get('core/backups/')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 17:08:29] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\settings\backup_restore.py", line 119, in load_backups
+    resp = api.list_backups()
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 433, in list_backups
+    return self.get('core/backups/')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 17:08:29] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: refresh
+  Class: DashboardView
+  View: 
+  Error Type: ApiException
+  Error Code: API_ERROR
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\settings\backup_restore.py", line 119, in load_backups
+    resp = api.list_backups()
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 433, in list_backups
+    return self.get('core/backups/')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\dashboard\__init__.py", line 273, in refresh
+    data = api.get_dashboard()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 680, in get_dashboard
+    return self.get('reports/dashboard/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 17:09:29] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 17:09:29] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [ApiException] يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+Context:
+  Function: refresh
+  Class: DashboardView
+  View: 
+  Error Type: ApiException
+  Error Code: API_ERROR
+  HTTP Status: 401
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\dashboard\__init__.py", line 273, in refresh
+    data = api.get_dashboard()
+           ^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 680, in get_dashboard
+    return self.get('reports/dashboard/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: يرجى تسجيل الدخول مرة أخرى: لم يتم تزويد بيانات الدخول.
+[2026-01-02 17:53:12] ERROR
+Logger: frontend:1015
+Function: error_handler.wrapper
+Message: Unexpected API error in get: [ApiException] field: fx_rate_date
+Context:
+  Function: get
+  Class: ApiService
+  Operation: API Request
+  Error Type: ApiException
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: field: fx_rate_date
+[2026-01-02 17:53:12] ERROR
+Logger: frontend:816
+Function: error_handler.wrapper
+Message: UI error in refresh: [ApiException] field: fx_rate_date
+Context:
+  Function: refresh
+  Class: ReceivablesReportView
+  View: 
+  Error Type: ApiException
+  Error Code: VALIDATION_ERROR
+  HTTP Status: 400
+  Traceback: (see below)
+================================================================================
+Traceback (most recent call last):
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 790, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\views\reports\receivables.py", line 381, in refresh
+    self._load_report()
+  File "C:\ERP\frontend\src\views\reports\receivables.py", line 391, in _load_report
+    self.report_data = api.get_receivables_report(**params)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 737, in get_receivables_report
+    return self.get('reports/receivables/', params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\utils\error_handler.py", line 941, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 347, in get
+    return self._request('GET', endpoint, params=params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ERP\frontend\src\services\api.py", line 134, in _request
+    self._handle_error_response(response)
+  File "C:\ERP\frontend\src\services\api.py", line 209, in _handle_error_response
+    raise ApiException(
+src.services.api.ApiException: field: fx_rate_date

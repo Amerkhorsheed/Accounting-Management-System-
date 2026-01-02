@@ -17,6 +17,7 @@ from .views.inventory.stock_movements import StockMovementsView
 from .views.sales import CustomersView, InvoicesView, POSView, SalesReturnsView
 from .views.sales.payments import PaymentsView
 from .views.purchases import SuppliersView, PurchaseOrdersView
+from .views.purchases.payments import SupplierPaymentsView
 from .views.expenses import ExpensesView
 from .views.reports import ReportsView
 from .views.settings import SettingsView
@@ -46,6 +47,9 @@ class MainApplication(QMainWindow):
         if login_dialog.exec():
             super().show()
             self.showMaximized()
+            # Start dashboard auto-refresh only after login
+            if hasattr(self, 'dashboard_view') and hasattr(self.dashboard_view, 'start_auto_refresh'):
+                self.dashboard_view.start_auto_refresh()
             # Refresh dashboard on start
             self.dashboard_view.refresh()
         else:
@@ -138,6 +142,10 @@ class MainApplication(QMainWindow):
         
         self.purchase_orders_view = PurchaseOrdersView()
         self.stack.addWidget(self.purchase_orders_view)
+
+        # Supplier Payments
+        self.supplier_payments_view = SupplierPaymentsView()
+        self.stack.addWidget(self.supplier_payments_view)
         
         # Expenses
         self.expenses_view = ExpensesView()
@@ -167,6 +175,7 @@ class MainApplication(QMainWindow):
             'expenses': self.expenses_view,
             'reports': self.reports_view,
             'settings': self.settings_view,
+            'supplier_payments': self.supplier_payments_view,
         }
         
     def on_navigation(self, view_name: str):
@@ -185,8 +194,9 @@ class MainApplication(QMainWindow):
                 'customers': 'العملاء',
                 'sales_returns': 'مرتجعات المبيعات',
                 'payments': 'المدفوعات',
-                'suppliers': 'الموردون',
                 'purchases': 'المشتريات',
+                'suppliers': 'الموردون',
+                'supplier_payments': 'مدفوعات الموردين',
                 'expenses': 'المصروفات',
                 'reports': 'التقارير',
                 'settings': 'الإعدادات',
@@ -293,7 +303,10 @@ class MainApplication(QMainWindow):
         )
         
         if reply == QMessageBox.Yes:
+            if hasattr(self, 'dashboard_view') and hasattr(self.dashboard_view, 'stop_auto_refresh'):
+                self.dashboard_view.stop_auto_refresh()
             # Clear session
             self.current_user = None
+            AuthService.logout()
             # Show login or close
             self.close()

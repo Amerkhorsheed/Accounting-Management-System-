@@ -833,7 +833,19 @@ class ReportService:
         total_overdue_usd = Decimal('0.00')
         today = date.today()
 
-        usd_to_syp_old, usd_to_syp_new = get_daily_fx(today)
+        # Try to get daily FX rate, fallback to latest available if not found for today
+        try:
+            usd_to_syp_old, usd_to_syp_new = get_daily_fx(today)
+        except Exception:
+            # Fallback to latest available exchange rate
+            from apps.core.settings_models import DailyExchangeRate
+            latest_fx = DailyExchangeRate.objects.order_by('-rate_date').first()
+            if latest_fx:
+                usd_to_syp_old = latest_fx.usd_to_syp_old
+                usd_to_syp_new = latest_fx.usd_to_syp_new
+            else:
+                usd_to_syp_old = Decimal('15000')
+                usd_to_syp_new = Decimal('150')
         
         for cust in customers:
             # Count unpaid and partial invoices for this customer

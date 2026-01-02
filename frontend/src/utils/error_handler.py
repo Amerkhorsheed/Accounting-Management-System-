@@ -882,10 +882,10 @@ def _handle_auth_error(parent: QWidget = None):
         # Try to show login dialog
         try:
             from ..views.login import LoginDialog
-            from ..services.api import api
+            from ..services.auth import AuthService
             
             # Clear old tokens
-            api.clear_tokens()
+            AuthService.logout()
             
             # Show login dialog
             login_dialog = LoginDialog(parent)

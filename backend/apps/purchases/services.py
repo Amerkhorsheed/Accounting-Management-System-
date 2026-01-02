@@ -335,6 +335,13 @@ class PurchaseService:
                 usd_to_syp_old=usd_to_syp_old_snapshot,
                 usd_to_syp_new=usd_to_syp_new_snapshot
             )
+
+        purchase_order = None
+        if purchase_order_id:
+            purchase_order = PurchaseOrder.objects.select_for_update().get(id=purchase_order_id)
+            remaining_usd = Decimal(str(purchase_order.remaining_amount_usd or 0))
+            if amount_usd > remaining_usd:
+                raise ValidationException('مبلغ الدفعة أكبر من المبلغ المتبقي', field='amount')
         
         payment = SupplierPayment.objects.create(
             supplier_id=supplier_id,
@@ -371,10 +378,14 @@ class PurchaseService:
         supplier.save(update_fields=['current_balance', 'current_balance_usd'])
         
         # Update PO paid amount if applicable
-        if purchase_order_id:
-            purchase_order = PurchaseOrder.objects.select_for_update().get(id=purchase_order_id)
+        if purchase_order:
             purchase_order.paid_amount_usd += amount_usd
-            purchase_order.paid_amount = purchase_order.paid_amount_usd
+            purchase_order.paid_amount = from_usd(
+                purchase_order.paid_amount_usd,
+                purchase_order.transaction_currency,
+                usd_to_syp_old=purchase_order.usd_to_syp_old_snapshot,
+                usd_to_syp_new=purchase_order.usd_to_syp_new_snapshot
+            )
             purchase_order.save(update_fields=['paid_amount', 'paid_amount_usd'])
         
         return payment

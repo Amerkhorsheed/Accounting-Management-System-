@@ -24,6 +24,7 @@ from .units import UnitsManagementView, UnitsView
 from .categories import CategoriesView
 from .warehouses import WarehousesView, WarehousesManagementView
 from .expense_categories import ExpenseCategoriesView
+from .backup_restore import BackupRestoreView
 
 
 class SettingsNavButton(QPushButton):
@@ -42,10 +43,12 @@ class SettingsNavButton(QPushButton):
                 border: none;
                 border-radius: 8px;
                 background: transparent;
+                color: {Colors.LIGHT_TEXT};
                 font-size: 13px;
             }}
             QPushButton:hover {{
                 background: {Colors.LIGHT_BORDER};
+                color: {Colors.LIGHT_TEXT};
             }}
             QPushButton:checked {{
                 background: {Colors.PRIMARY};
@@ -444,6 +447,7 @@ class SettingsView(QWidget):
             ('categories', 'الفئات', '📁'),
             ('warehouses', 'المستودعات', '🏭'),
             ('expense_categories', 'فئات المصروفات', '💰'),
+            ('backup_restore', 'النسخ الاحتياطي والاستعادة', '💾'),
         ]
         
         for key, label, icon in nav_items:
@@ -477,6 +481,9 @@ class SettingsView(QWidget):
         # Expense categories management widget
         self.expense_categories_view = ExpenseCategoriesView()
         self.stack.addWidget(self.expense_categories_view)
+
+        self.backup_restore_view = BackupRestoreView()
+        self.stack.addWidget(self.backup_restore_view)
         
         # Content wrapper with padding
         content_wrapper = QWidget()
@@ -514,6 +521,9 @@ class SettingsView(QWidget):
         elif key == 'expense_categories':
             self.stack.setCurrentWidget(self.expense_categories_view)
             self.expense_categories_view.refresh()
+        elif key == 'backup_restore':
+            self.stack.setCurrentWidget(self.backup_restore_view)
+            self.backup_restore_view.load_backups()
             
     def refresh(self):
         """Refresh current settings view."""

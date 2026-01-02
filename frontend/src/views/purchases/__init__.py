@@ -11,12 +11,12 @@ from PySide6.QtWidgets import (
     QDialog, QComboBox, QDateEdit, QTextEdit,
     QDoubleSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QPushButton, QGridLayout, QFrame,
-    QAbstractItemView, QLineEdit, QSpinBox
+    QAbstractItemView, QLineEdit, QSpinBox, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QDate, QEvent
 from PySide6.QtGui import QFont
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.tables import DataTable
 from ...widgets.forms import FormDialog
 from ...widgets.dialogs import MessageDialog, ConfirmDialog
@@ -71,7 +71,7 @@ class SuppliersView(QWidget):
             except (ValueError, TypeError):
                 s['current_balance_display'] = str(s.get('current_balance', ''))
             try:
-                s['current_balance_usd_display'] = f"{float(s.get('current_balance_usd', 0)):,.2f} $"
+                s['current_balance_usd_display'] = config.format_usd(float(s.get('current_balance_usd', 0) or 0))
             except (ValueError, TypeError):
                 s['current_balance_usd_display'] = str(s.get('current_balance_usd', ''))
         self.table.set_data(suppliers)
@@ -346,7 +346,7 @@ class PurchaseOrdersView(QWidget):
         for o in orders:
             try:
                 amount = float(o.get('total_amount_usd', 0) or 0)
-                o['total_amount_display'] = f"{amount:,.2f} $"
+                o['total_amount_display'] = config.format_usd(amount)
             except (ValueError, TypeError):
                 o['total_amount_display'] = str(o.get('total_amount_usd', o.get('total_amount', '')))
         self.table.set_data(orders)
@@ -589,7 +589,7 @@ class PurchaseOrderFormDialog(QDialog):
 
         self.price_spin = QDoubleSpinBox()
         self.price_spin.setRange(0, 999999999)
-        self.price_spin.setPrefix("السعر ($): ")
+        self.price_spin.setPrefix("السعر: ")
         self.price_spin.setMinimumWidth(120)
         entry_layout.addWidget(self.price_spin, 1)
 
@@ -724,7 +724,7 @@ class PurchaseOrderFormDialog(QDialog):
             else:
                 lbl.setProperty("class", "body")
             
-            val = QLabel("0.00 $")
+            val = QLabel(config.format_usd(0))
             if is_grand:
                 val.setFont(QFont(Fonts.FAMILY_AR, 14, QFont.Bold))
                 val.setStyleSheet(f"color: {Colors.PRIMARY};")
@@ -749,6 +749,56 @@ class PurchaseOrderFormDialog(QDialog):
         add_total_row("الإجمالي الكلي:", "total_value", is_grand=True)
 
         summary_card_layout.addLayout(totals_layout)
+
+        self.pay_now_check = QCheckBox("💸 دفع الآن (اختياري)")
+        self.pay_now_check.setChecked(False)
+        self.pay_now_check.stateChanged.connect(self._on_pay_now_changed)
+        summary_card_layout.addWidget(self.pay_now_check)
+
+        payment_frame = QFrame()
+        payment_layout = QGridLayout(payment_frame)
+        payment_layout.setSpacing(6)
+
+        payment_layout.addWidget(QLabel("تاريخ الدفع"), 0, 0)
+        self.payment_date_edit = QDateEdit()
+        self.payment_date_edit.setCalendarPopup(True)
+        self.payment_date_edit.setDate(QDate.currentDate())
+        payment_layout.addWidget(self.payment_date_edit, 0, 1)
+
+        payment_layout.addWidget(QLabel("عملة الدفع"), 1, 0)
+        self.payment_currency_combo = QComboBox()
+        self.payment_currency_combo.addItem("USD", "USD")
+        self.payment_currency_combo.addItem("ل.س قديم", "SYP_OLD")
+        self.payment_currency_combo.addItem("ل.س جديد", "SYP_NEW")
+        payment_layout.addWidget(self.payment_currency_combo, 1, 1)
+
+        payment_layout.addWidget(QLabel("المبلغ"), 2, 0)
+        self.payment_amount_spin = QDoubleSpinBox()
+        self.payment_amount_spin.setRange(0, 999999999999)
+        self.payment_amount_spin.setDecimals(2)
+        payment_layout.addWidget(self.payment_amount_spin, 2, 1)
+
+        payment_layout.addWidget(QLabel("طريقة الدفع"), 3, 0)
+        self.payment_method_combo = QComboBox()
+        self.payment_method_combo.addItem("نقداً", "cash")
+        self.payment_method_combo.addItem("تحويل بنكي", "bank")
+        self.payment_method_combo.addItem("شيك", "check")
+        self.payment_method_combo.addItem("بطاقة ائتمان", "credit")
+        payment_layout.addWidget(self.payment_method_combo, 3, 1)
+
+        payment_layout.addWidget(QLabel("المرجع"), 4, 0)
+        self.payment_reference_edit = QLineEdit()
+        self.payment_reference_edit.setPlaceholderText("اختياري")
+        payment_layout.addWidget(self.payment_reference_edit, 4, 1)
+
+        full_pay_btn = QPushButton("دفع كامل")
+        full_pay_btn.setProperty("class", "secondary")
+        full_pay_btn.clicked.connect(self.set_full_payment_amount)
+        payment_layout.addWidget(full_pay_btn, 5, 0, 1, 2)
+
+        self.payment_frame = payment_frame
+        summary_card_layout.addWidget(payment_frame)
+        self._on_pay_now_changed()
         
         # Notes Section
         notes_label = QLabel("📝 ملاحظات إضافية")
@@ -1087,8 +1137,8 @@ class PurchaseOrderFormDialog(QDialog):
         
         # Update summary
         total = sum(item['total'] for item in self.items)
-        self.subtotal_value.setText(f"{total:,.2f} $")
-        self.total_value.setText(f"{total:,.2f} $")
+        self.subtotal_value.setText(config.format_usd(total))
+        self.total_value.setText(config.format_usd(total))
         
         # Auto-scroll to last item - Requirements: 2.3
         if self.items:
@@ -1132,6 +1182,24 @@ class PurchaseOrderFormDialog(QDialog):
             MessageDialog.warning(self, "تنبيه", "يجب إدخال سعر الصرف")
             return False
 
+        if self.pay_now_check.isChecked():
+            total_usd = sum(float(item.get('total', 0) or 0) for item in self.items)
+            pay_amount = float(self.payment_amount_spin.value() or 0)
+            if pay_amount <= 0:
+                MessageDialog.warning(self, "تنبيه", "يرجى إدخال مبلغ دفع صحيح")
+                return False
+
+            pay_currency = self.payment_currency_combo.currentData() if hasattr(self, 'payment_currency_combo') else 'USD'
+            pay_amount_usd = pay_amount
+            if pay_currency == 'SYP_OLD':
+                pay_amount_usd = (pay_amount / fx_old) if fx_old else pay_amount
+            elif pay_currency == 'SYP_NEW':
+                pay_amount_usd = (pay_amount / fx_new) if fx_new else pay_amount
+
+            if pay_amount_usd > total_usd:
+                MessageDialog.warning(self, "تنبيه", "مبلغ الدفعة أكبر من إجمالي أمر الشراء")
+                return False
+
         return True
     
     def get_data(self) -> dict:
@@ -1157,6 +1225,21 @@ class PurchaseOrderFormDialog(QDialog):
                 for item in self.items
             ]
         }
+
+        if self.pay_now_check.isChecked() and float(self.payment_amount_spin.value() or 0) > 0:
+            data.update({
+                'payment_amount': float(self.payment_amount_spin.value()),
+                'payment_method': self.payment_method_combo.currentData(),
+                'payment_date': self.payment_date_edit.date().toString('yyyy-MM-dd'),
+                'payment_transaction_currency': self.payment_currency_combo.currentData(),
+                'payment_reference': self.payment_reference_edit.text().strip() or None,
+                'payment_notes': None,
+            })
+
+            if (self.payment_currency_combo.currentData() or 'USD') != 'USD':
+                data['payment_fx_rate_date'] = self.fx_rate_date_edit.date().toString('yyyy-MM-dd')
+                data['payment_usd_to_syp_old_snapshot'] = fx_old if fx_old > 0 else None
+                data['payment_usd_to_syp_new_snapshot'] = fx_new if fx_new > 0 else None
         
         notes = self.notes_edit.toPlainText().strip()
         if notes:
@@ -1185,6 +1268,15 @@ class PurchaseOrderFormDialog(QDialog):
             self._updating_fx = True
             self.usd_to_syp_old_snapshot.setValue(value * 100)
             self._updating_fx = False
+
+    def _on_pay_now_changed(self, *args):
+        enabled = self.pay_now_check.isChecked() if hasattr(self, 'pay_now_check') else False
+        if hasattr(self, 'payment_frame'):
+            self.payment_frame.setVisible(enabled)
+
+    def set_full_payment_amount(self):
+        total_usd = sum(float(item.get('total', 0) or 0) for item in self.items)
+        self.payment_amount_spin.setValue(total_usd)
 
 
 class PurchaseOrderDetailsDialog(QDialog):
@@ -1280,15 +1372,15 @@ class PurchaseOrderDetailsDialog(QDialog):
         paid = float(self.order.get('paid_amount_usd', self.order.get('paid_amount', 0)) or 0)
         remaining = float(self.order.get('remaining_amount_usd', total - paid) or 0)
         
-        total_label = QLabel(f"💰 الإجمالي: {total:,.2f} $")
+        total_label = QLabel(f"💰 الإجمالي: {config.format_usd(total)}")
         total_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
         right_col.addWidget(total_label)
         
-        paid_label = QLabel(f"✅ المدفوع: {paid:,.2f} $")
+        paid_label = QLabel(f"✅ المدفوع: {config.format_usd(paid)}")
         paid_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         right_col.addWidget(paid_label)
         
-        remaining_label = QLabel(f"⏳ المتبقي: {remaining:,.2f} $")
+        remaining_label = QLabel(f"⏳ المتبقي: {config.format_usd(remaining)}")
         if remaining > 0:
             remaining_label.setStyleSheet(f"color: {Colors.WARNING};")
         right_col.addWidget(remaining_label)
@@ -1333,6 +1425,34 @@ class PurchaseOrderDetailsDialog(QDialog):
             self.items_table.setItem(row, 6, QTableWidgetItem(f"{float(item.get('total', 0)):,.2f}"))
         
         layout.addWidget(self.items_table)
+
+        payments = self.order.get('payments', [])
+        if payments:
+            payments_label = QLabel("💸 سجل الدفعات")
+            payments_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
+            layout.addWidget(payments_label)
+
+            payments_table = QTableWidget()
+            payments_table.setColumnCount(5)
+            payments_table.setHorizontalHeaderLabels([
+                'رقم السند', 'التاريخ', 'المبلغ', 'الطريقة', 'المرجع'
+            ])
+            payments_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+            payments_table.verticalHeader().setVisible(False)
+            payments_table.setAlternatingRowColors(True)
+            payments_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            payments_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+
+            payments_table.setRowCount(len(payments))
+            for row, p in enumerate(payments):
+                payments_table.setItem(row, 0, QTableWidgetItem(str(p.get('payment_number', ''))))
+                payments_table.setItem(row, 1, QTableWidgetItem(str(p.get('payment_date', ''))))
+                amount_usd = float(p.get('amount_usd', p.get('amount', 0)) or 0)
+                payments_table.setItem(row, 2, QTableWidgetItem(config.format_usd(amount_usd)))
+                payments_table.setItem(row, 3, QTableWidgetItem(str(p.get('payment_method_display', p.get('payment_method', '')))))
+                payments_table.setItem(row, 4, QTableWidgetItem(str(p.get('reference', '') or '')))
+
+            layout.addWidget(payments_table)
         
         # Notes if any
         notes = self.order.get('notes', '')
@@ -1594,6 +1714,20 @@ class SupplierPaymentDialog(QDialog):
         if amount <= 0:
             MessageDialog.warning(self, "تنبيه", "يجب إدخال مبلغ صحيح")
             return False
+
+        if self.order.get('id'):
+            remaining_usd = float(self.order.get('remaining_amount_usd', 0) or 0)
+            currency = self.currency_combo.currentData()
+            fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+            fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+            amount_usd = amount
+            if currency == 'SYP_OLD':
+                amount_usd = (amount / fx_old) if fx_old else amount
+            elif currency == 'SYP_NEW':
+                amount_usd = (amount / fx_new) if fx_new else amount
+            if amount_usd > remaining_usd:
+                MessageDialog.warning(self, "تنبيه", "مبلغ الدفعة أكبر من المبلغ المتبقي")
+                return False
 
         return True
 

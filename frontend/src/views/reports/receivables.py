@@ -1,44 +1,101 @@
-"""
-Receivables Report View - تقرير المستحقات
+"""Receivables Report View - تقرير المستحقات - Professional Modern Design"""
 
-This module provides the UI for viewing the receivables report showing
-all outstanding customer balances, with filtering and summary cards.
-
-Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
-"""
-from typing import List, Dict, Optional
 from datetime import datetime
+from typing import Dict, List
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QGridLayout, QScrollArea,
-    QTableWidget, QTableWidgetItem, QHeaderView,
-    QComboBox, QDateEdit, QAbstractItemView
+    QPushButton, QDateEdit, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView, QFrame, QGridLayout,
+    QScrollArea, QGraphicsDropShadowEffect, QComboBox
 )
 from PySide6.QtCore import Qt, Signal, QDate
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QFont, QBrush, QColor
 
 from ...config import Colors, Fonts, config
-from ...widgets.cards import Card, StatCard
+from ...widgets.cards import Card
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
 from ...services.export import ExportService, ExportError
 from ...utils.error_handler import handle_ui_error
 
 
+class ReceivableMetricCard(QFrame):
+    def __init__(self, title: str, value: str, icon: str, color: str, subtitle: str = "", parent=None):
+        super().__init__(parent)
+        self.accent_color = color
+        self.setObjectName("receivable_metric_card")
+        self.setup_ui(title, value, icon, subtitle)
+        self._apply_style()
+        
+    def setup_ui(self, title: str, value: str, icon: str, subtitle: str):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(8)
+        top = QHBoxLayout()
+        icon_label = QLabel(icon)
+        icon_label.setFixedSize(44, 44)
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet(f"""
+            font-size: 22px; background: {self.accent_color}18;
+            color: {self.accent_color}; border-radius: 12px;
+            border: 1px solid {self.accent_color}30;
+        """)
+        top.addWidget(icon_label)
+        top.addStretch()
+        layout.addLayout(top)
+        self.value_label = QLabel(value)
+        self.value_label.setFont(QFont(Fonts.FAMILY_AR, 26, QFont.Bold))
+        self.value_label.setStyleSheet(f"color: {self.accent_color}; background: transparent;")
+        layout.addWidget(self.value_label)
+        title_label = QLabel(title)
+        title_label.setFont(QFont(Fonts.FAMILY_AR, 12, QFont.Medium))
+        title_label.setStyleSheet(f"color: {Colors.LIGHT_TEXT_SECONDARY}; background: transparent;")
+        layout.addWidget(title_label)
+        if subtitle:
+            sub_label = QLabel(subtitle)
+            sub_label.setFont(QFont(Fonts.FAMILY_AR, 10))
+            sub_label.setStyleSheet(f"color: {Colors.LIGHT_TEXT_SECONDARY}80; background: transparent;")
+            layout.addWidget(sub_label)
+    
+    def _apply_style(self):
+        self.setStyleSheet(f"""
+            QFrame#receivable_metric_card {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {Colors.LIGHT_CARD}, stop:1 {self.accent_color}08);
+                border: 1px solid {Colors.LIGHT_BORDER}; border-radius: 16px;
+                border-left: 4px solid {self.accent_color};
+            }}
+        """)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QColor(0, 0, 0, 15))
+        self.setGraphicsEffect(shadow)
+        
+    def update_value(self, value: str):
+        self.value_label.setText(value)
+
+
+class SectionHeader(QFrame):
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 8, 0, 12)
+        title_lbl = QLabel(title)
+        title_lbl.setFont(QFont(Fonts.FAMILY_AR, 16, QFont.Bold))
+        title_lbl.setStyleSheet(f"color: {Colors.LIGHT_TEXT}; background: transparent;")
+        layout.addWidget(title_lbl)
+        layout.addStretch()
+        self.setStyleSheet("background: transparent;")
+
+
 class ReceivablesReportView(QWidget):
-    """
-    Receivables Report View showing outstanding customer balances.
+    """Professional Receivables report view."""
     
-    Displays:
-    - Summary cards (total outstanding, overdue amount, customer count)
-    - Customer list table with balances sorted by amount
-    - Filter controls (customer type, salesperson, date range)
-    
-    Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
-    """
-    
-    customer_selected = Signal(dict)  # Emitted when a customer row is clicked
-    back_requested = Signal()  # Emitted when back button is clicked
+    customer_selected = Signal(dict)
+    back_requested = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -47,385 +104,415 @@ class ReceivablesReportView(QWidget):
         self.setup_ui()
     
     def go_back(self):
-        """Navigate back to main reports view."""
         self.back_requested.emit()
-        
+
     def setup_ui(self):
-        """Initialize the receivables report UI."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(20)
+
         # Header
-        header = QHBoxLayout()
+        header_card = QFrame()
+        header_card.setObjectName("header_card")
+        header_card.setStyleSheet(f"""
+            QFrame#header_card {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {Colors.PRIMARY}, stop:1 #8B5CF6);
+                border-radius: 16px;
+            }}
+        """)
+        header_layout = QHBoxLayout(header_card)
+        header_layout.setContentsMargins(24, 20, 24, 20)
         
-        # Back button
         back_btn = QPushButton("→ رجوع")
-        back_btn.setProperty("class", "secondary")
+        back_btn.setCursor(Qt.PointingHandCursor)
+        back_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(255,255,255,0.2); color: white;
+                border: 1px solid rgba(255,255,255,0.3);
+                border-radius: 8px; padding: 10px 20px; font-weight: 500;
+            }}
+            QPushButton:hover {{ background: rgba(255,255,255,0.3); }}
+        """)
         back_btn.clicked.connect(self.go_back)
-        header.addWidget(back_btn)
+        header_layout.addWidget(back_btn)
         
-        title = QLabel("تقرير المستحقات")
-        title.setProperty("class", "title")
-        header.addWidget(title)
-        header.addStretch()
+        title_section = QVBoxLayout()
+        title_section.setSpacing(4)
+        title = QLabel("💰 تقرير المستحقات")
+        title.setFont(QFont(Fonts.FAMILY_AR, 22, QFont.Bold))
+        title.setStyleSheet("color: white; background: transparent;")
+        title_section.addWidget(title)
+        subtitle = QLabel("تحليل شامل لأرصدة العملاء والمستحقات المالية")
+        subtitle.setFont(QFont(Fonts.FAMILY_AR, 12))
+        subtitle.setStyleSheet("color: rgba(255,255,255,0.85); background: transparent;")
+        title_section.addWidget(subtitle)
+        header_layout.addLayout(title_section)
+        header_layout.addStretch()
         
-        # Refresh button
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(10)
+        
         refresh_btn = QPushButton("🔄 تحديث")
-        refresh_btn.setProperty("class", "secondary")
+        refresh_btn.setCursor(Qt.PointingHandCursor)
+        refresh_btn.setStyleSheet(f"""
+            QPushButton {{ background: rgba(255,255,255,0.15); color: white;
+                border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 10px 18px; }}
+            QPushButton:hover {{ background: rgba(255,255,255,0.25); }}
+        """)
         refresh_btn.clicked.connect(self.refresh)
-        header.addWidget(refresh_btn)
+        actions_layout.addWidget(refresh_btn)
         
-        # Export buttons (placeholders)
         export_excel_btn = QPushButton("📊 Excel")
-        export_excel_btn.setProperty("class", "secondary")
+        export_excel_btn.setCursor(Qt.PointingHandCursor)
+        export_excel_btn.setStyleSheet(f"""
+            QPushButton {{ background: {Colors.SUCCESS}; color: white;
+                border: none; border-radius: 8px; padding: 10px 18px; }}
+            QPushButton:hover {{ background: {Colors.SUCCESS}dd; }}
+        """)
         export_excel_btn.clicked.connect(self._export_excel)
-        header.addWidget(export_excel_btn)
+        actions_layout.addWidget(export_excel_btn)
         
         export_pdf_btn = QPushButton("📄 PDF")
-        export_pdf_btn.setProperty("class", "secondary")
+        export_pdf_btn.setCursor(Qt.PointingHandCursor)
+        export_pdf_btn.setStyleSheet(f"""
+            QPushButton {{ background: {Colors.DANGER}; color: white;
+                border: none; border-radius: 8px; padding: 10px 18px; }}
+            QPushButton:hover {{ background: {Colors.DANGER}dd; }}
+        """)
         export_pdf_btn.clicked.connect(self._export_pdf)
-        header.addWidget(export_pdf_btn)
+        actions_layout.addWidget(export_pdf_btn)
         
-        layout.addLayout(header)
-        
-        # Filters section
-        # Requirements: 4.4 - Allow filtering by customer type, salesperson, date range
-        filters_frame = Card()
-        filters_layout = QHBoxLayout(filters_frame)
-        filters_layout.setContentsMargins(16, 12, 16, 12)
+        header_layout.addLayout(actions_layout)
+        layout.addWidget(header_card)
+
+        # Filters
+        filters_card = QFrame()
+        filters_card.setObjectName("filters_card")
+        filters_card.setStyleSheet(f"""
+            QFrame#filters_card {{
+                background: {Colors.LIGHT_CARD};
+                border: 1px solid {Colors.LIGHT_BORDER};
+                border-radius: 12px;
+            }}
+        """)
+        filters_layout = QHBoxLayout(filters_card)
+        filters_layout.setContentsMargins(20, 16, 20, 16)
         filters_layout.setSpacing(16)
         
-        # Customer type filter
+        filters_layout.addWidget(QLabel("📅"))
         filters_layout.addWidget(QLabel("نوع العميل:"))
         self.customer_type_combo = QComboBox()
         self.customer_type_combo.addItem("الكل", None)
-        self.customer_type_combo.addItem("فرد", "individual")
-        self.customer_type_combo.addItem("شركة", "company")
-        self.customer_type_combo.addItem("حكومي", "government")
-        self.customer_type_combo.setMinimumWidth(120)
+        self.customer_type_combo.addItem("آجل", "credit")
+        self.customer_type_combo.addItem("نقدي", "cash")
+        self.customer_type_combo.setMinimumWidth(100)
         filters_layout.addWidget(self.customer_type_combo)
         
-        # Salesperson filter (placeholder - would need API to populate)
-        filters_layout.addWidget(QLabel("مندوب المبيعات:"))
-        self.salesperson_combo = QComboBox()
-        self.salesperson_combo.addItem("الكل", None)
-        self.salesperson_combo.setMinimumWidth(150)
-        filters_layout.addWidget(self.salesperson_combo)
-        
-        # Date range filter
-        filters_layout.addWidget(QLabel("من:"))
-        self.from_date = QDateEdit()
-        self.from_date.setCalendarPopup(True)
-        self.from_date.setDate(QDate.currentDate().addMonths(-3))
-        filters_layout.addWidget(self.from_date)
-        
-        filters_layout.addWidget(QLabel("إلى:"))
-        self.to_date = QDateEdit()
-        self.to_date.setCalendarPopup(True)
-        self.to_date.setDate(QDate.currentDate())
-        filters_layout.addWidget(self.to_date)
-        
-        # Apply filter button
-        apply_btn = QPushButton("تطبيق")
-        apply_btn.clicked.connect(self._apply_filters)
+        apply_btn = QPushButton("🔍 عرض التقرير")
+        apply_btn.setCursor(Qt.PointingHandCursor)
+        apply_btn.setStyleSheet(f"""
+            QPushButton {{ background: {Colors.PRIMARY}; color: white;
+                border: none; border-radius: 8px; padding: 10px 24px; font-weight: 600; }}
+            QPushButton:hover {{ background: {Colors.PRIMARY_DARK}; }}
+        """)
+        apply_btn.clicked.connect(self.refresh)
         filters_layout.addWidget(apply_btn)
-        
         filters_layout.addStretch()
+        layout.addWidget(filters_card)
+
+        # Metrics
+        layout.addWidget(SectionHeader("📊 ملخص المستحقات"))
         
-        layout.addWidget(filters_frame)
+        metrics_grid = QGridLayout()
+        metrics_grid.setSpacing(16)
         
-        # Summary cards section
-        # Requirements: 4.1, 4.2 - Display total outstanding and customer count
-        cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(16)
-        
-        # Total outstanding card
-        self.total_card = StatCard(
-            title="إجمالي المستحقات",
-            value="0.00 ل.س",
-            icon="💰",
-            color=Colors.PRIMARY
+        self.total_receivables_card = ReceivableMetricCard(
+            "إجمالي المستحقات", config.format_usd(0), "💰", Colors.PRIMARY, "Total Receivables"
         )
-        cards_layout.addWidget(self.total_card)
+        metrics_grid.addWidget(self.total_receivables_card, 0, 0)
         
-        # Overdue amount card
-        self.overdue_card = StatCard(
-            title="المبالغ المتأخرة",
-            value="0.00 ل.س",
-            icon="⚠️",
-            color=Colors.DANGER
+        self.overdue_card = ReceivableMetricCard(
+            "المستحقات المتأخرة", config.format_usd(0), "⚠️", Colors.DANGER, "Overdue Amount"
         )
-        cards_layout.addWidget(self.overdue_card)
+        metrics_grid.addWidget(self.overdue_card, 0, 1)
         
-        # Customers with balance count card
-        self.customers_count_card = StatCard(
-            title="عملاء لديهم رصيد",
-            value="0",
-            icon="👥",
-            color=Colors.INFO
+        self.customer_count_card = ReceivableMetricCard(
+            "عدد العملاء", "0", "👥", Colors.INFO, "Customers with Balance"
         )
-        cards_layout.addWidget(self.customers_count_card)
+        metrics_grid.addWidget(self.customer_count_card, 0, 2)
         
-        # Unpaid invoices count card
-        self.invoices_count_card = StatCard(
-            title="فواتير غير مسددة",
-            value="0",
-            icon="📋",
-            color=Colors.WARNING
-        )
-        cards_layout.addWidget(self.invoices_count_card)
+        self.status_card = QFrame()
+        self.status_card.setObjectName("status_card")
+        self._update_status_card(0, 0)
+        metrics_grid.addWidget(self.status_card, 0, 3)
         
-        layout.addLayout(cards_layout)
+        layout.addLayout(metrics_grid)
+
+        # Customers Table
+        layout.addWidget(SectionHeader("👥 أرصدة العملاء"))
         
-        # Customers table section
-        # Requirements: 4.2, 4.3, 4.5 - List customers with balances, credit info, invoice counts
-        table_card = Card()
-        table_layout = QVBoxLayout(table_card)
-        table_layout.setContentsMargins(16, 16, 16, 16)
-        table_layout.setSpacing(12)
+        customers_card = QFrame()
+        customers_card.setObjectName("customers_card")
+        customers_card.setStyleSheet(f"""
+            QFrame#customers_card {{
+                background: {Colors.LIGHT_CARD};
+                border: 1px solid {Colors.LIGHT_BORDER};
+                border-radius: 12px;
+            }}
+        """)
+        customers_layout = QVBoxLayout(customers_card)
+        customers_layout.setContentsMargins(20, 16, 20, 16)
+        customers_layout.setSpacing(12)
         
-        table_header = QHBoxLayout()
-        table_title = QLabel("قائمة العملاء")
-        table_title.setProperty("class", "h2")
-        table_header.addWidget(table_title)
-        table_header.addStretch()
-        table_layout.addLayout(table_header)
+        note = QLabel("💡 العملاء مرتبين حسب الرصيد المستحق - انقر على العميل لعرض كشف الحساب")
+        note.setFont(QFont(Fonts.FAMILY_AR, 10))
+        note.setStyleSheet(f"""
+            color: {Colors.LIGHT_TEXT_SECONDARY};
+            background: {Colors.PRIMARY}15;
+            padding: 8px 12px; border-radius: 6px;
+            border-left: 3px solid {Colors.PRIMARY};
+        """)
+        customers_layout.addWidget(note)
         
-        # Customers table
         self.customers_table = QTableWidget()
-        self.customers_table.setColumnCount(8)
+        self.customers_table.setColumnCount(6)
         self.customers_table.setHorizontalHeaderLabels([
-            'كود العميل',
-            'اسم العميل',
-            'نوع العميل',
-            'الرصيد الحالي',
-            'حد الائتمان',
-            'الائتمان المتاح',
-            'فواتير غير مسددة',
-            'فواتير جزئية'
+            'الكود', 'اسم العميل', 'نوع العميل', 'حد الائتمان', 'الرصيد المستحق', 'الحالة'
         ])
-        self.customers_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.customers_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.customers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        for i in range(2, 6):
+            self.customers_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
         self.customers_table.verticalHeader().setVisible(False)
         self.customers_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.customers_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.customers_table.setAlternatingRowColors(True)
-        self.customers_table.doubleClicked.connect(self._on_customer_double_clicked)
+        self.customers_table.setMinimumHeight(400)
+        self.customers_table.cellDoubleClicked.connect(self._on_customer_clicked)
+        self._style_table(self.customers_table)
+        customers_layout.addWidget(self.customers_table)
         
-        table_layout.addWidget(self.customers_table)
+        layout.addWidget(customers_card, 1)
+        layout.addStretch()
         
-        layout.addWidget(table_card, 1)
-    
-    @handle_ui_error
-    def refresh(self):
-        """Refresh the receivables report data from API."""
-        self._load_report()
-    
-    @handle_ui_error
-    def _apply_filters(self):
-        """Apply filters and reload the report."""
-        self._load_report()
-    
-    def _load_report(self):
-        """
-        Load receivables report data from API.
+        scroll.setWidget(content)
+        main_layout.addWidget(scroll)
+
+    def _style_table(self, table: QTableWidget):
+        table.setStyleSheet(f"""
+            QTableWidget {{ background: {Colors.LIGHT_CARD}; border: 1px solid {Colors.LIGHT_BORDER};
+                border-radius: 8px; gridline-color: {Colors.LIGHT_BORDER}; }}
+            QTableWidget::item {{ padding: 10px 12px; border-bottom: 1px solid {Colors.LIGHT_BORDER}50; }}
+            QTableWidget::item:selected {{ background: {Colors.PRIMARY}15; color: {Colors.PRIMARY}; }}
+            QHeaderView::section {{ background: {Colors.LIGHT_BG}; color: {Colors.LIGHT_TEXT};
+                padding: 12px; border: none; border-bottom: 2px solid {Colors.PRIMARY};
+                font-weight: bold; font-size: 12px; }}
+        """)
+
+    def _update_status_card(self, overdue: float, total: float):
+        pct = (overdue / total * 100) if total > 0 else 0
+        if pct >= 50:
+            status_icon, status_text, status_color = "🚨", "تحذير!", Colors.DANGER
+        elif pct >= 25:
+            status_icon, status_text, status_color = "⚠️", "يحتاج متابعة", Colors.WARNING
+        elif pct > 0:
+            status_icon, status_text, status_color = "📊", "جيد", Colors.INFO
+        else:
+            status_icon, status_text, status_color = "✅", "ممتاز", Colors.SUCCESS
         
-        Requirements: 4.1-4.5
-        """
-        # Build filter parameters
-        params = {}
+        self.status_card.setStyleSheet(f"""
+            QFrame#status_card {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {status_color}15, stop:1 {status_color}08);
+                border: 2px solid {status_color}40; border-radius: 16px;
+            }}
+        """)
         
-        customer_type = self.customer_type_combo.currentData()
-        if customer_type:
-            params['customer_type'] = customer_type
+        if self.status_card.layout():
+            while self.status_card.layout().count():
+                item = self.status_card.layout().takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+        else:
+            QVBoxLayout(self.status_card)
         
-        salesperson_id = self.salesperson_combo.currentData()
-        if salesperson_id:
-            params['salesperson'] = salesperson_id
+        layout = self.status_card.layout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignCenter)
         
-        start_date = self.from_date.date().toString('yyyy-MM-dd')
-        end_date = self.to_date.date().toString('yyyy-MM-dd')
-        params['start_date'] = start_date
-        params['end_date'] = end_date
+        icon_lbl = QLabel(status_icon)
+        icon_lbl.setFont(QFont(Fonts.FAMILY_AR, 36))
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("background: transparent;")
+        layout.addWidget(icon_lbl)
         
-        # Fetch report data
-        self.report_data = api.get_receivables_report(
-            customer_type=params.get('customer_type'),
-            salesperson_id=params.get('salesperson'),
-            start_date=params.get('start_date'),
-            end_date=params.get('end_date')
-        )
+        status_lbl = QLabel(status_text)
+        status_lbl.setFont(QFont(Fonts.FAMILY_AR, 16, QFont.Bold))
+        status_lbl.setAlignment(Qt.AlignCenter)
+        status_lbl.setStyleSheet(f"color: {status_color}; background: transparent;")
+        layout.addWidget(status_lbl)
         
-        # Update summary cards
-        self._update_summary_cards()
-        
-        # Update customers table
-        self._update_customers_table()
-    
-    def _update_summary_cards(self):
-        """
-        Update the summary cards with report data.
-        
-        Requirements: 4.1, 4.2
-        """
-        summary = self.report_data.get('summary', {})
-        total_outstanding = float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)
-        overdue_total = float(summary.get('total_overdue_usd', summary.get('total_overdue', 0)) or 0)
-        customers_count = int(summary.get('customer_count', 0))
-        unpaid_invoices = int(summary.get('total_unpaid_invoices', 0))
-        partial_invoices = int(summary.get('total_partial_invoices', 0))
-        
-        self.total_card.update_value(config.format_usd(total_outstanding))
-        self.overdue_card.update_value(config.format_usd(overdue_total))
-        self.customers_count_card.update_value(str(customers_count))
-        self.invoices_count_card.update_value(str(unpaid_invoices + partial_invoices))
-    
-    def _update_customers_table(self):
-        """
-        Update the customers table with report data.
-        
-        Requirements: 4.2, 4.3, 4.5 - List customers sorted by balance, show credit info
-        """
-        customers = self.report_data.get('customers', [])
-        self.customers_list = customers
-        
-        self.customers_table.setRowCount(len(customers))
-        
-        for row, customer in enumerate(customers):
-            # Customer code
-            code_item = QTableWidgetItem(str(customer.get('code', '')))
-            code_item.setData(Qt.UserRole, customer)
-            self.customers_table.setItem(row, 0, code_item)
-            
-            # Customer name
-            self.customers_table.setItem(row, 1, QTableWidgetItem(
-                str(customer.get('name', ''))
-            ))
-            
-            # Customer type
-            customer_type = customer.get('customer_type', '')
-            type_display = {
-                'individual': 'فرد',
-                'company': 'شركة',
-                'government': 'حكومي'
-            }.get(customer_type, customer_type)
-            self.customers_table.setItem(row, 2, QTableWidgetItem(type_display))
-            
-            # Current balance
-            balance = float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0)
-            balance_item = QTableWidgetItem(config.format_usd(balance))
-            balance_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            # Color code based on credit status
-            credit_limit = float(customer.get('credit_limit', 0))
-            if credit_limit > 0 and balance > credit_limit:
-                balance_item.setForeground(QColor(Colors.DANGER))
-            elif credit_limit > 0 and balance >= credit_limit * 0.8:
-                balance_item.setForeground(QColor(Colors.WARNING))
-            self.customers_table.setItem(row, 3, balance_item)
-            
-            # Credit limit
-            credit_limit_usd = float(customer.get('credit_limit_usd', 0) or 0)
-            credit_limit_item = QTableWidgetItem(
-                config.format_usd(credit_limit_usd) if credit_limit > 0 else "غير محدد"
-            )
-            credit_limit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.customers_table.setItem(row, 4, credit_limit_item)
-            
-            # Available credit
-            available = float(customer.get('available_credit_usd', customer.get('available_credit', 0)) or 0)
-            available_item = QTableWidgetItem(
-                config.format_usd(available) if credit_limit > 0 else "-"
-            )
-            available_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            if credit_limit > 0:
-                if available <= 0:
-                    available_item.setForeground(QColor(Colors.DANGER))
-                elif available < credit_limit * 0.2:
-                    available_item.setForeground(QColor(Colors.WARNING))
-                else:
-                    available_item.setForeground(QColor(Colors.SUCCESS))
-            self.customers_table.setItem(row, 5, available_item)
-            
-            # Unpaid invoices count
-            unpaid_count = int(customer.get('unpaid_invoice_count', 0))
-            unpaid_item = QTableWidgetItem(str(unpaid_count))
-            unpaid_item.setTextAlignment(Qt.AlignCenter)
-            if unpaid_count > 0:
-                unpaid_item.setForeground(QColor(Colors.DANGER))
-            self.customers_table.setItem(row, 6, unpaid_item)
-            
-            # Partial invoices count
-            partial_count = int(customer.get('partial_invoice_count', 0))
-            partial_item = QTableWidgetItem(str(partial_count))
-            partial_item.setTextAlignment(Qt.AlignCenter)
-            if partial_count > 0:
-                partial_item.setForeground(QColor(Colors.WARNING))
-            self.customers_table.setItem(row, 7, partial_item)
-    
-    def _on_customer_double_clicked(self, index):
-        """Handle customer row double-click to view statement."""
-        row = index.row()
+        desc_lbl = QLabel("حالة التحصيل")
+        desc_lbl.setFont(QFont(Fonts.FAMILY_AR, 10))
+        desc_lbl.setAlignment(Qt.AlignCenter)
+        desc_lbl.setStyleSheet(f"color: {Colors.LIGHT_TEXT_SECONDARY}; background: transparent;")
+        layout.addWidget(desc_lbl)
+
+    def _on_customer_clicked(self, row: int, col: int):
+        """Handle customer row double-click to show statement."""
         if row < len(self.customers_list):
             customer = self.customers_list[row]
             self.customer_selected.emit(customer)
-    
-    def _export_excel(self):
-        """
-        Export report to Excel.
+
+    @handle_ui_error
+    def refresh(self):
+        """Refresh the receivables report data."""
+        self._load_report()
+
+    def _load_report(self):
+        """Load receivables report data from API."""
+        customer_type = self.customer_type_combo.currentData()
         
-        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
-        """
+        params = {}
+        if customer_type:
+            params['customer_type'] = customer_type
+        
+        self.report_data = api.get_receivables_report(**params)
+        self._update_ui()
+
+    def _update_ui(self):
+        """Update all UI elements with report data."""
+        data = self.report_data or {}
+        
+        # Extract summary values
+        total_receivables = float(data.get('total_receivables_usd', data.get('total_receivables', 0)) or 0)
+        overdue_amount = float(data.get('overdue_amount_usd', data.get('overdue_amount', 0)) or 0)
+        customer_count = int(data.get('customer_count', 0))
+        
+        # Update metric cards
+        self.total_receivables_card.update_value(config.format_usd(total_receivables))
+        self.overdue_card.update_value(config.format_usd(overdue_amount))
+        self.customer_count_card.update_value(str(customer_count))
+        
+        # Update status card
+        self._update_status_card(overdue_amount, total_receivables)
+        
+        # Update customers table
+        self.customers_list = data.get('customers', [])
+        self._update_customers_table()
+
+    def _update_customers_table(self):
+        """Update the customers table with receivables data."""
+        self.customers_table.setRowCount(len(self.customers_list))
+        
+        for row, customer in enumerate(self.customers_list):
+            # Code
+            code = str(customer.get('code', ''))
+            code_item = QTableWidgetItem(code)
+            code_item.setTextAlignment(Qt.AlignCenter)
+            code_item.setFont(QFont(Fonts.FAMILY_AR, 10))
+            code_item.setForeground(QBrush(QColor(Colors.LIGHT_TEXT_SECONDARY)))
+            self.customers_table.setItem(row, 0, code_item)
+            
+            # Name
+            name = str(customer.get('name', ''))
+            name_item = QTableWidgetItem(name)
+            name_item.setFont(QFont(Fonts.FAMILY_AR, 11, QFont.Medium))
+            self.customers_table.setItem(row, 1, name_item)
+            
+            # Customer type
+            cust_type = customer.get('customer_type', '')
+            type_display = 'آجل' if cust_type == 'credit' else 'نقدي'
+            type_item = QTableWidgetItem(type_display)
+            type_item.setTextAlignment(Qt.AlignCenter)
+            if cust_type == 'credit':
+                type_item.setForeground(QBrush(QColor(Colors.WARNING)))
+            else:
+                type_item.setForeground(QBrush(QColor(Colors.SUCCESS)))
+            self.customers_table.setItem(row, 2, type_item)
+            
+            # Credit limit
+            credit_limit = float(customer.get('credit_limit_usd', customer.get('credit_limit', 0)) or 0)
+            limit_item = QTableWidgetItem(config.format_usd(credit_limit))
+            limit_item.setTextAlignment(Qt.AlignCenter)
+            self.customers_table.setItem(row, 3, limit_item)
+            
+            # Balance
+            balance = float(customer.get('balance_usd', customer.get('balance', 0)) or 0)
+            balance_item = QTableWidgetItem(config.format_usd(balance))
+            balance_item.setTextAlignment(Qt.AlignCenter)
+            balance_item.setFont(QFont(Fonts.FAMILY_AR, 11, QFont.Bold))
+            if balance > 0:
+                balance_item.setForeground(QBrush(QColor(Colors.DANGER)))
+            else:
+                balance_item.setForeground(QBrush(QColor(Colors.SUCCESS)))
+            self.customers_table.setItem(row, 4, balance_item)
+            
+            # Status
+            if balance <= 0:
+                status = "✅ مسدد"
+                status_color = Colors.SUCCESS
+            elif credit_limit > 0 and balance > credit_limit:
+                status = "🚨 تجاوز الحد"
+                status_color = Colors.DANGER
+            elif balance > 0:
+                status = "⏳ مستحق"
+                status_color = Colors.WARNING
+            else:
+                status = "✅ جيد"
+                status_color = Colors.SUCCESS
+            
+            status_item = QTableWidgetItem(status)
+            status_item.setTextAlignment(Qt.AlignCenter)
+            status_item.setForeground(QBrush(QColor(status_color)))
+            self.customers_table.setItem(row, 5, status_item)
+
+    def _export_excel(self):
+        """Export receivables report to Excel."""
         if not self.customers_list:
             MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
             return
         
         try:
-            # Define columns for export
             columns = [
-                ('code', 'كود العميل'),
+                ('code', 'الكود'),
                 ('name', 'اسم العميل'),
                 ('customer_type_display', 'نوع العميل'),
-                ('current_balance', 'الرصيد الحالي'),
                 ('credit_limit', 'حد الائتمان'),
-                ('available_credit', 'الائتمان المتاح'),
-                ('unpaid_invoice_count', 'فواتير غير مسددة'),
-                ('partial_invoice_count', 'فواتير جزئية')
+                ('balance', 'الرصيد المستحق')
             ]
             
-            # Prepare data with display values
             export_data = []
             for customer in self.customers_list:
-                customer_type = customer.get('customer_type', '')
-                type_display = {
-                    'individual': 'فرد',
-                    'company': 'شركة',
-                    'government': 'حكومي'
-                }.get(customer_type, customer_type)
-                
+                cust_type = customer.get('customer_type', '')
                 export_data.append({
                     'code': customer.get('code', ''),
                     'name': customer.get('name', ''),
-                    'customer_type_display': type_display,
-                    'current_balance': float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0),
-                    'credit_limit': float(customer.get('credit_limit', 0)),
-                    'available_credit': float(customer.get('available_credit', 0)),
-                    'unpaid_invoice_count': int(customer.get('unpaid_invoice_count', 0)),
-                    'partial_invoice_count': int(customer.get('partial_invoice_count', 0))
+                    'customer_type_display': 'آجل' if cust_type == 'credit' else 'نقدي',
+                    'credit_limit': float(customer.get('credit_limit_usd', customer.get('credit_limit', 0)) or 0),
+                    'balance': float(customer.get('balance_usd', customer.get('balance', 0)) or 0)
                 })
             
-            # Generate filename with date
             filename = f"تقرير_المستحقات_{datetime.now().strftime('%Y%m%d')}.xlsx"
             
-            # Prepare summary data
-            summary = self.report_data.get('summary', {})
+            data = self.report_data or {}
             summary_data = {
-                'إجمالي المستحقات': config.format_usd(float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)),
-                'المبالغ المتأخرة': config.format_usd(float(summary.get('total_overdue_usd', summary.get('total_overdue', 0)) or 0)),
-                'عدد العملاء': str(summary.get('customer_count', 0))
+                'إجمالي المستحقات': config.format_usd(float(data.get('total_receivables_usd', data.get('total_receivables', 0)) or 0)),
+                'المستحقات المتأخرة': config.format_usd(float(data.get('overdue_amount_usd', data.get('overdue_amount', 0)) or 0)),
+                'عدد العملاء': str(int(data.get('customer_count', 0)))
             }
             
-            # Export to Excel
             success = ExportService.export_to_excel(
                 data=export_data,
                 columns=columns,
@@ -442,73 +529,49 @@ class ReceivablesReportView(QWidget):
             MessageDialog.error(self, "خطأ", e.message)
         except Exception as e:
             MessageDialog.error(self, "خطأ", f"فشل تصدير التقرير: {str(e)}")
-    
+
     def _export_pdf(self):
-        """
-        Export report to PDF.
-        
-        Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
-        """
+        """Export receivables report to PDF."""
         if not self.customers_list:
             MessageDialog.warning(self, "تنبيه", "لا توجد بيانات للتصدير")
             return
         
         try:
-            # Define columns for export
             columns = [
-                ('code', 'كود العميل'),
+                ('code', 'الكود'),
                 ('name', 'اسم العميل'),
                 ('customer_type_display', 'نوع العميل'),
-                ('current_balance', 'الرصيد الحالي'),
                 ('credit_limit', 'حد الائتمان'),
-                ('available_credit', 'الائتمان المتاح'),
-                ('unpaid_invoice_count', 'فواتير غير مسددة')
+                ('balance', 'الرصيد المستحق')
             ]
             
-            # Prepare data with display values
             export_data = []
             for customer in self.customers_list:
-                customer_type = customer.get('customer_type', '')
-                type_display = {
-                    'individual': 'فرد',
-                    'company': 'شركة',
-                    'government': 'حكومي'
-                }.get(customer_type, customer_type)
-                
+                cust_type = customer.get('customer_type', '')
                 export_data.append({
                     'code': customer.get('code', ''),
                     'name': customer.get('name', ''),
-                    'customer_type_display': type_display,
-                    'current_balance': float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0),
-                    'credit_limit': float(customer.get('credit_limit', 0)),
-                    'available_credit': float(customer.get('available_credit', 0)),
-                    'unpaid_invoice_count': int(customer.get('unpaid_invoice_count', 0))
+                    'customer_type_display': 'آجل' if cust_type == 'credit' else 'نقدي',
+                    'credit_limit': float(customer.get('credit_limit_usd', customer.get('credit_limit', 0)) or 0),
+                    'balance': float(customer.get('balance_usd', customer.get('balance', 0)) or 0)
                 })
             
-            # Generate filename with date
             filename = f"تقرير_المستحقات_{datetime.now().strftime('%Y%m%d')}.pdf"
             
-            # Prepare summary data
-            summary = self.report_data.get('summary', {})
+            data = self.report_data or {}
             summary_data = {
-                'إجمالي المستحقات': config.format_usd(float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)),
-                'المبالغ المتأخرة': config.format_usd(float(summary.get('total_overdue_usd', summary.get('total_overdue', 0)) or 0)),
-                'عدد العملاء': str(summary.get('customer_count', 0))
+                'إجمالي المستحقات': config.format_usd(float(data.get('total_receivables_usd', data.get('total_receivables', 0)) or 0)),
+                'المستحقات المتأخرة': config.format_usd(float(data.get('overdue_amount_usd', data.get('overdue_amount', 0)) or 0)),
+                'عدد العملاء': str(int(data.get('customer_count', 0)))
             }
             
-            # Get date range
-            start_date = self.from_date.date().toString('yyyy-MM-dd')
-            end_date = self.to_date.date().toString('yyyy-MM-dd')
-            
-            # Export to PDF
             success = ExportService.export_to_pdf(
                 data=export_data,
                 columns=columns,
                 filename=filename,
                 title="تقرير المستحقات",
                 parent=self,
-                summary=summary_data,
-                date_range=(start_date, end_date)
+                summary=summary_data
             )
             
             if success:

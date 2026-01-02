@@ -9,6 +9,7 @@ Requirements: 3.1, 3.2, 5.1, 5.2
 """
 import logging
 import requests
+from pathlib import Path
 from typing import Optional, Dict, List, Any, Tuple
 from ..config import config
 from ..utils.error_handler import handle_api_error
@@ -426,6 +427,86 @@ class ApiService:
 
     def delete_daily_exchange_rate(self, id: int) -> Dict:
         return self.delete(f'core/daily-exchange-rates/{id}/')
+
+    # Backups endpoints
+    def list_backups(self) -> Dict:
+        return self.get('core/backups/')
+
+    def create_backup(self, include_media: bool = False) -> Dict:
+        return self.post('core/backups/', {'include_media': include_media})
+
+    def delete_backup(self, filename: str) -> Dict:
+        return self.delete(f'core/backups/{filename}/')
+
+    @handle_api_error
+    def download_backup_to_file(self, filename: str, dest_path: str) -> Dict:
+        base = str(self.base_url).rstrip('/')
+        url = f"{base}/core/backups/{filename}/download/"
+        headers = self._headers().copy()
+        headers.pop('Content-Type', None)
+        headers['Accept'] = '*/*'
+
+        response = requests.get(url, headers=headers, timeout=self.timeout, stream=True)
+
+        if response.status_code == 401 and self._refresh_token:
+            if self._refresh_access_token():
+                headers = self._headers().copy()
+                headers.pop('Content-Type', None)
+                headers['Accept'] = '*/*'
+                response = requests.get(url, headers=headers, timeout=self.timeout, stream=True)
+
+        if not response.ok:
+            self._handle_error_response(response)
+
+        try:
+            with open(dest_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
+        return {}
+
+    @handle_api_error
+    def restore_backup_from_file(
+        self,
+        file_path: str,
+        restore_media: bool = True,
+        replace_media: bool = False,
+    ) -> Dict:
+        base = str(self.base_url).rstrip('/')
+        url = f"{base}/core/backups/restore/"
+
+        def do_request():
+            headers = self._headers().copy()
+            headers.pop('Content-Type', None)
+            headers['Accept'] = 'application/json'
+
+            with open(file_path, 'rb') as f:
+                files = {
+                    'file': (Path(file_path).name, f, 'application/octet-stream')
+                }
+                data = {
+                    'confirm': 'RESTORE',
+                    'restore_media': 'true' if restore_media else 'false',
+                    'replace_media': 'true' if replace_media else 'false',
+                }
+                return requests.post(url, headers=headers, timeout=self.timeout, files=files, data=data)
+
+        response = do_request()
+
+        if response.status_code == 401 and self._refresh_token:
+            if self._refresh_access_token():
+                response = do_request()
+
+        if not response.ok:
+            self._handle_error_response(response)
+
+        return response.json() if response.content else {}
     
     # Products endpoints
     def get_products(self, params: Dict = None) -> Dict:
@@ -547,6 +628,14 @@ class ApiService:
         
     def create_supplier(self, data: Dict) -> Dict:
         return self.post('purchases/suppliers/', data)
+
+    def get_supplier_statement(self, supplier_id: int, start_date: str = None, end_date: str = None) -> Dict:
+        params = {}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        return self.get(f'purchases/suppliers/{supplier_id}/statement/', params)
     
     # Purchase Orders endpoints
     def get_purchase_orders(self, params: Dict = None) -> Dict:
@@ -564,6 +653,9 @@ class ApiService:
     # Supplier Payments endpoints
     def get_supplier_payments(self, params: Dict = None) -> Dict:
         return self.get('purchases/payments/', params)
+
+    def get_supplier_payment(self, payment_id: int) -> Dict:
+        return self.get(f'purchases/payments/{payment_id}/')
 
     def create_supplier_payment(self, data: Dict) -> Dict:
         return self.post('purchases/payments/', data)

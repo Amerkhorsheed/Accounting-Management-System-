@@ -123,6 +123,7 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     items = PurchaseOrderItemSerializer(many=True, read_only=True)
+    payments = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True)
     
@@ -140,9 +141,13 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
             'reference', 'notes',
             'created_by', 'created_by_name', 'created_at',
             'approved_by', 'approved_by_name', 'approved_at',
-            'items'
+            'items', 'payments'
         ]
         read_only_fields = ['id', 'order_number', 'subtotal', 'tax_amount', 'total_amount', 'created_at']
+
+    def get_payments(self, obj):
+        qs = obj.payments.filter(is_deleted=False).order_by('-payment_date', '-payment_number')
+        return SupplierPaymentSerializer(qs, many=True).data
 
 
 class PurchaseOrderItemCreateSerializer(serializers.ModelSerializer):
@@ -168,6 +173,17 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemCreateSerializer(many=True)
     # Non-model fields for auto-approval
     confirm = serializers.BooleanField(required=False, default=False, write_only=True)
+
+    # Optional initial payment (paid now) fields
+    payment_amount = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True, write_only=True)
+    payment_method = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    payment_date = serializers.DateField(required=False, allow_null=True, write_only=True)
+    payment_transaction_currency = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    payment_fx_rate_date = serializers.DateField(required=False, allow_null=True, write_only=True)
+    payment_usd_to_syp_old_snapshot = serializers.DecimalField(max_digits=18, decimal_places=6, required=False, allow_null=True, write_only=True)
+    payment_usd_to_syp_new_snapshot = serializers.DecimalField(max_digits=18, decimal_places=6, required=False, allow_null=True, write_only=True)
+    payment_reference = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
+    payment_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
     
     class Meta:
         model = PurchaseOrder
@@ -175,7 +191,11 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
             'supplier', 'warehouse', 'order_date', 'expected_date',
             'discount_amount',
             'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
-            'reference', 'notes', 'items', 'confirm'
+            'reference', 'notes', 'items', 'confirm',
+            'payment_amount', 'payment_method', 'payment_date',
+            'payment_transaction_currency', 'payment_fx_rate_date',
+            'payment_usd_to_syp_old_snapshot', 'payment_usd_to_syp_new_snapshot',
+            'payment_reference', 'payment_notes'
         ]
 
     def validate_items(self, value):
@@ -191,6 +211,18 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         
         items_data = validated_data.pop('items')
         confirm = validated_data.pop('confirm', False)
+
+        payment_amount = validated_data.pop('payment_amount', None)
+        payment_method = validated_data.pop('payment_method', None)
+        payment_date = validated_data.pop('payment_date', None)
+        payment_transaction_currency = validated_data.pop('payment_transaction_currency', None)
+        payment_fx_rate_date = validated_data.pop('payment_fx_rate_date', None)
+        payment_usd_to_syp_old_snapshot = validated_data.pop('payment_usd_to_syp_old_snapshot', None)
+        payment_usd_to_syp_new_snapshot = validated_data.pop('payment_usd_to_syp_new_snapshot', None)
+        payment_reference = validated_data.pop('payment_reference', None)
+        payment_notes = validated_data.pop('payment_notes', None)
+
+        has_initial_payment = payment_amount is not None and Decimal(str(payment_amount or 0)) > 0
         user = self.context.get('request').user if self.context.get('request') else None
 
         service_items = []
@@ -248,6 +280,25 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
 
                 purchase_order.refresh_from_db()
 
+                if has_initial_payment:
+                    PurchaseService.make_supplier_payment(
+                        supplier_id=validated_data['supplier'].id,
+                        payment_date=payment_date or purchase_order.order_date,
+                        amount=Decimal(str(payment_amount)),
+                        payment_method=(payment_method or 'cash'),
+                        purchase_order_id=purchase_order.id,
+                        transaction_currency=payment_transaction_currency or 'USD',
+                        fx_rate_date=payment_fx_rate_date or purchase_order.order_date,
+                        usd_to_syp_old_snapshot=payment_usd_to_syp_old_snapshot,
+                        usd_to_syp_new_snapshot=payment_usd_to_syp_new_snapshot,
+                        reference=payment_reference,
+                        notes=payment_notes,
+                        user=user
+                    )
+                    purchase_order.refresh_from_db()
+            elif has_initial_payment:
+                raise serializers.ValidationError({'payment_amount': 'لا يمكن تسجيل دفعة قبل تأكيد/استلام أمر الشراء'})
+
         return purchase_order
 
 
@@ -283,15 +334,19 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
     
     supplier_name = serializers.CharField(source='supplier.name', read_only=True)
     payment_method_display = serializers.CharField(source='get_payment_method_display', read_only=True)
+    purchase_order_number = serializers.CharField(source='purchase_order.order_number', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     
     class Meta:
         model = SupplierPayment
         fields = [
             'id', 'payment_number', 'supplier', 'supplier_name',
-            'purchase_order', 'payment_date',
+            'purchase_order', 'purchase_order_number', 'payment_date',
             'transaction_currency', 'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
             'amount', 'amount_usd',
             'payment_method', 'payment_method_display',
-            'reference', 'notes', 'created_at'
+            'reference', 'notes',
+            'created_by', 'created_by_name',
+            'created_at'
         ]
         read_only_fields = ['id', 'payment_number', 'created_at']

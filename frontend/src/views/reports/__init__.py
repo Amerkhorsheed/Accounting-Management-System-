@@ -25,7 +25,12 @@ from .receivables import ReceivablesReportView
 from .aging import AgingReportView
 from .customer_statement import CustomerStatementView
 from .suppliers import SuppliersReportView
+from .supplier_statement import SupplierStatementView
 from .expenses import ExpensesReportView
+from .profit import ProfitReportView
+from .sales import SalesReportView
+from .customers import CustomerReportView
+from .inventory import InventoryReportView
 
 
 class ReportsView(QWidget):
@@ -66,6 +71,11 @@ class ReportsView(QWidget):
         self.statement_view = CustomerStatementView()
         self.statement_view.back_requested.connect(self.go_to_main)
         self.stack.addWidget(self.statement_view)
+
+        # Supplier statement view
+        self.supplier_statement_view = SupplierStatementView()
+        self.supplier_statement_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.supplier_statement_view)
         
         # Suppliers report view
         self.suppliers_view = SuppliersReportView()
@@ -76,6 +86,26 @@ class ReportsView(QWidget):
         self.expenses_view = ExpensesReportView()
         self.expenses_view.back_requested.connect(self.go_to_main)
         self.stack.addWidget(self.expenses_view)
+
+        # Profit report view
+        self.profit_view = ProfitReportView()
+        self.profit_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.profit_view)
+
+        # Sales report view
+        self.sales_view = SalesReportView()
+        self.sales_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.sales_view)
+
+        # Customer report view
+        self.customers_view = CustomerReportView()
+        self.customers_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.customers_view)
+
+        # Inventory report view
+        self.inventory_view = InventoryReportView()
+        self.inventory_view.back_requested.connect(self.go_to_main)
+        self.stack.addWidget(self.inventory_view)
         
         main_layout.addWidget(self.stack)
     
@@ -135,6 +165,8 @@ class ReportsView(QWidget):
              "تصنيف المستحقات حسب فترة التأخير"),
             ("📋", "كشف حساب العميل", "statement", Colors.INFO,
              "عرض حركات حساب العميل والرصيد"),
+            ("🏭", "كشف حساب المورد", "supplier_statement", Colors.SECONDARY,
+             "عرض حركات حساب المورد والرصيد"),
         ]
         
         for i, (icon, label, key, color, description) in enumerate(credit_reports):
@@ -275,6 +307,10 @@ class ReportsView(QWidget):
             self.statement_view.refresh()
             self.stack.setCurrentWidget(self.statement_view)
             return
+        elif report_type == 'supplier_statement':
+            self.supplier_statement_view.refresh()
+            self.stack.setCurrentWidget(self.supplier_statement_view)
+            return
         elif report_type == 'suppliers':
             self.suppliers_view.refresh()
             self.stack.setCurrentWidget(self.suppliers_view)
@@ -283,32 +319,24 @@ class ReportsView(QWidget):
             self.expenses_view.refresh()
             self.stack.setCurrentWidget(self.expenses_view)
             return
-        
-        # Handle existing reports with dialogs
-        if report_type == 'sales':
-            data = api.get_sales_report(start_date, end_date)
-            summary = data.get('summary', {})
-            total = float(summary.get('total_usd', summary.get('total', 0)) or 0)
-            count = summary.get('count', 0)
-            MessageDialog.info(self, "تقرير المبيعات", f"إجمالي المبيعات: {config.format_usd(total)}\nعدد الفواتير: {count}")
         elif report_type == 'profit':
-            data = api.get_profit_report(start_date, end_date)
-            net_profit = float(data.get('net_profit_usd', data.get('net_profit', 0)) or 0)
-            gross_profit = float(data.get('gross_profit_usd', data.get('gross_profit', 0)) or 0)
-            MessageDialog.info(self, "تقرير الأرباح", f"إجمالي الربح: {config.format_usd(gross_profit)}\nصافي الربح: {config.format_usd(net_profit)}")
-        elif report_type == 'inventory':
-            data = api.get_inventory_report()
-            total_value = float(data.get('total_value', 0))
-            item_count = data.get('item_count', 0)
-            low_stock = data.get('low_stock_count', 0)
-            MessageDialog.info(self, "تقرير المخزون", f"إجمالي قيمة المخزون: {total_value:,.2f} ل.س\nعدد الأصناف: {item_count}\nمنخفض المخزون: {low_stock}")
+            self.profit_view.refresh()
+            self.stack.setCurrentWidget(self.profit_view)
+            return
+        elif report_type == 'sales':
+            self.sales_view.refresh()
+            self.stack.setCurrentWidget(self.sales_view)
+            return
         elif report_type == 'customers':
-            data = api.get_customer_report(start_date, end_date)
-            summary = data.get('summary', {})
-            total = summary.get('total_customers', 0)
-            active = summary.get('active_customers', 0)
-            receivables = float(summary.get('total_receivables_usd', summary.get('total_receivables', 0)) or 0)
-            MessageDialog.info(self, "تقرير العملاء", f"إجمالي العملاء: {total}\nالعملاء النشطين: {active}\nإجمالي المستحقات: {config.format_usd(receivables)}")
+            self.customers_view.refresh()
+            self.stack.setCurrentWidget(self.customers_view)
+            return
+        elif report_type == 'inventory':
+            self.inventory_view.refresh()
+            self.stack.setCurrentWidget(self.inventory_view)
+            return
+        
+        # Handle remaining reports with dialogs
         else:
             MessageDialog.info(self, "معلومات", "هذا التقرير قيد التطوير")
         
@@ -326,6 +354,18 @@ class ReportsView(QWidget):
             self.suppliers_view.refresh()
         elif current == self.expenses_view:
             self.expenses_view.refresh()
+        elif current == self.profit_view:
+            self.profit_view.refresh()
+        elif current == self.sales_view:
+            self.sales_view.refresh()
+        elif current == self.customers_view:
+            self.customers_view.refresh()
+        elif current == self.inventory_view:
+            self.inventory_view.refresh()
+
+    def go_to_main(self):
+        """Navigate back to main reports view."""
+        self.stack.setCurrentWidget(self.main_view)
     
     def go_to_receivables(self):
         """Navigate directly to receivables report (for dashboard click)."""
@@ -357,3 +397,18 @@ class ReportsView(QWidget):
     def go_to_main(self):
         """Navigate back to main reports grid."""
         self.stack.setCurrentWidget(self.main_view)
+
+    def go_to_sales(self):
+        """Navigate directly to sales report."""
+        self.sales_view.refresh()
+        self.stack.setCurrentWidget(self.sales_view)
+
+    def go_to_customers(self):
+        """Navigate directly to customers report."""
+        self.customers_view.refresh()
+        self.stack.setCurrentWidget(self.customers_view)
+
+    def go_to_inventory(self):
+        """Navigate directly to inventory report."""
+        self.inventory_view.refresh()
+        self.stack.setCurrentWidget(self.inventory_view)
