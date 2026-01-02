@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.cards import Card
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
@@ -156,25 +156,25 @@ class CustomerStatementView(QWidget):
         
         # Opening balance
         summary_layout.addWidget(QLabel("الرصيد الافتتاحي:"), 1, 0)
-        self.opening_balance_label = QLabel("0.00 ل.س")
+        self.opening_balance_label = QLabel(config.format_usd(0))
         self.opening_balance_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
         summary_layout.addWidget(self.opening_balance_label, 1, 1)
         
         # Total debits (invoices)
         summary_layout.addWidget(QLabel("إجمالي المدين:"), 1, 2)
-        self.total_debit_label = QLabel("0.00 ل.س")
+        self.total_debit_label = QLabel(config.format_usd(0))
         self.total_debit_label.setStyleSheet(f"color: {Colors.DANGER};")
         summary_layout.addWidget(self.total_debit_label, 1, 3)
         
         # Total credits (payments)
         summary_layout.addWidget(QLabel("إجمالي الدائن:"), 2, 0)
-        self.total_credit_label = QLabel("0.00 ل.س")
+        self.total_credit_label = QLabel(config.format_usd(0))
         self.total_credit_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         summary_layout.addWidget(self.total_credit_label, 2, 1)
         
         # Closing balance
         summary_layout.addWidget(QLabel("الرصيد الختامي:"), 2, 2)
-        self.closing_balance_label = QLabel("0.00 ل.س")
+        self.closing_balance_label = QLabel(config.format_usd(0))
         self.closing_balance_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
         self.closing_balance_label.setStyleSheet(f"color: {Colors.PRIMARY};")
         summary_layout.addWidget(self.closing_balance_label, 2, 3)
@@ -264,10 +264,10 @@ class CustomerStatementView(QWidget):
         """Clear the statement display."""
         self.customer_name_label.setText("-")
         self.customer_code_label.setText("-")
-        self.opening_balance_label.setText("0.00 ل.س")
-        self.total_debit_label.setText("0.00 ل.س")
-        self.total_credit_label.setText("0.00 ل.س")
-        self.closing_balance_label.setText("0.00 ل.س")
+        self.opening_balance_label.setText(config.format_usd(0))
+        self.total_debit_label.setText(config.format_usd(0))
+        self.total_credit_label.setText(config.format_usd(0))
+        self.closing_balance_label.setText(config.format_usd(0))
         self.transactions_table.setRowCount(0)
         self.transaction_count_label.setText("0 حركة")
         self.transactions = []
@@ -316,19 +316,19 @@ class CustomerStatementView(QWidget):
         
         Requirements: 3.1 - Display opening balance and closing balance
         """
-        opening = float(self.statement_data.get('opening_balance', 0))
-        closing = float(self.statement_data.get('closing_balance', 0))
+        opening = float(self.statement_data.get('opening_balance_usd', self.statement_data.get('opening_balance', 0)) or 0)
+        closing = float(self.statement_data.get('closing_balance_usd', self.statement_data.get('closing_balance', 0)) or 0)
         
         # Backend returns total_invoices, total_payments, total_returns
-        total_debit = float(self.statement_data.get('total_invoices', 0))
-        total_payments = float(self.statement_data.get('total_payments', 0))
-        total_returns = float(self.statement_data.get('total_returns', 0))
+        total_debit = float(self.statement_data.get('total_invoices_usd', self.statement_data.get('total_invoices', 0)) or 0)
+        total_payments = float(self.statement_data.get('total_payments_usd', self.statement_data.get('total_payments', 0)) or 0)
+        total_returns = float(self.statement_data.get('total_returns_usd', self.statement_data.get('total_returns', 0)) or 0)
         total_credit = total_payments + total_returns
         
-        self.opening_balance_label.setText(f"{opening:,.2f} ل.س")
-        self.closing_balance_label.setText(f"{closing:,.2f} ل.س")
-        self.total_debit_label.setText(f"{total_debit:,.2f} ل.س")
-        self.total_credit_label.setText(f"{total_credit:,.2f} ل.س")
+        self.opening_balance_label.setText(config.format_usd(opening))
+        self.closing_balance_label.setText(config.format_usd(closing))
+        self.total_debit_label.setText(config.format_usd(total_debit))
+        self.total_credit_label.setText(config.format_usd(total_credit))
         
         # Color code closing balance
         if closing > 0:
@@ -380,16 +380,16 @@ class CustomerStatementView(QWidget):
             self.transactions_table.setItem(row, 3, QTableWidgetItem(str(description)))
             
             # Debit amount (increases balance - invoices)
-            debit = float(transaction.get('debit', 0))
-            debit_item = QTableWidgetItem(f"{debit:,.2f}" if debit > 0 else "-")
+            debit = float(transaction.get('debit_usd', transaction.get('debit', 0)) or 0)
+            debit_item = QTableWidgetItem(config.format_usd(debit) if debit > 0 else "-")
             debit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if debit > 0:
                 debit_item.setForeground(QColor(Colors.DANGER))
             self.transactions_table.setItem(row, 4, debit_item)
             
             # Credit amount (decreases balance - payments)
-            credit = float(transaction.get('credit', 0))
-            credit_item = QTableWidgetItem(f"{credit:,.2f}" if credit > 0 else "-")
+            credit = float(transaction.get('credit_usd', transaction.get('credit', 0)) or 0)
+            credit_item = QTableWidgetItem(config.format_usd(credit) if credit > 0 else "-")
             credit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if credit > 0:
                 credit_item.setForeground(QColor(Colors.SUCCESS))
@@ -397,8 +397,8 @@ class CustomerStatementView(QWidget):
             
             # Running balance
             # Requirements: 3.3 - Calculate running balance after each transaction
-            balance = float(transaction.get('balance', 0))
-            balance_item = QTableWidgetItem(f"{balance:,.2f}")
+            balance = float(transaction.get('balance_usd', transaction.get('balance', 0)) or 0)
+            balance_item = QTableWidgetItem(config.format_usd(balance))
             balance_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             balance_item.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
             
@@ -479,9 +479,9 @@ class CustomerStatementView(QWidget):
                     'type_display': type_display,
                     'reference': trans.get('reference', ''),
                     'description': trans.get('description', ''),
-                    'debit': float(trans.get('debit', 0)),
-                    'credit': float(trans.get('credit', 0)),
-                    'balance': float(trans.get('balance', 0))
+                    'debit': float(trans.get('debit_usd', trans.get('debit', 0)) or 0),
+                    'credit': float(trans.get('credit_usd', trans.get('credit', 0)) or 0),
+                    'balance': float(trans.get('balance_usd', trans.get('balance', 0)) or 0)
                 })
             
             # Generate filename with customer name and date
@@ -489,19 +489,19 @@ class CustomerStatementView(QWidget):
             filename = f"كشف_حساب_{customer_name}_{datetime.now().strftime('%Y%m%d')}.xlsx"
             
             # Prepare summary data
-            opening = float(self.statement_data.get('opening_balance', 0))
-            closing = float(self.statement_data.get('closing_balance', 0))
-            total_debit = float(self.statement_data.get('total_invoices', 0))
-            total_payments = float(self.statement_data.get('total_payments', 0))
-            total_returns = float(self.statement_data.get('total_returns', 0))
+            opening = float(self.statement_data.get('opening_balance_usd', self.statement_data.get('opening_balance', 0)) or 0)
+            closing = float(self.statement_data.get('closing_balance_usd', self.statement_data.get('closing_balance', 0)) or 0)
+            total_debit = float(self.statement_data.get('total_invoices_usd', self.statement_data.get('total_invoices', 0)) or 0)
+            total_payments = float(self.statement_data.get('total_payments_usd', self.statement_data.get('total_payments', 0)) or 0)
+            total_returns = float(self.statement_data.get('total_returns_usd', self.statement_data.get('total_returns', 0)) or 0)
             
             summary_data = {
                 'اسم العميل': self.selected_customer.get('name', ''),
                 'كود العميل': self.selected_customer.get('code', ''),
-                'الرصيد الافتتاحي': f"{opening:,.2f} ل.س",
-                'إجمالي المدين': f"{total_debit:,.2f} ل.س",
-                'إجمالي الدائن': f"{(total_payments + total_returns):,.2f} ل.س",
-                'الرصيد الختامي': f"{closing:,.2f} ل.س"
+                'الرصيد الافتتاحي': config.format_usd(opening),
+                'إجمالي المدين': config.format_usd(total_debit),
+                'إجمالي الدائن': config.format_usd(total_payments + total_returns),
+                'الرصيد الختامي': config.format_usd(closing)
             }
             
             # Export to Excel
@@ -559,9 +559,9 @@ class CustomerStatementView(QWidget):
                     'type_display': type_display,
                     'reference': trans.get('reference', ''),
                     'description': trans.get('description', ''),
-                    'debit': float(trans.get('debit', 0)),
-                    'credit': float(trans.get('credit', 0)),
-                    'balance': float(trans.get('balance', 0))
+                    'debit': float(trans.get('debit_usd', trans.get('debit', 0)) or 0),
+                    'credit': float(trans.get('credit_usd', trans.get('credit', 0)) or 0),
+                    'balance': float(trans.get('balance_usd', trans.get('balance', 0)) or 0)
                 })
             
             # Generate filename with customer name and date
@@ -569,19 +569,19 @@ class CustomerStatementView(QWidget):
             filename = f"كشف_حساب_{customer_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
             
             # Prepare summary data
-            opening = float(self.statement_data.get('opening_balance', 0))
-            closing = float(self.statement_data.get('closing_balance', 0))
-            total_debit = float(self.statement_data.get('total_invoices', 0))
-            total_payments = float(self.statement_data.get('total_payments', 0))
-            total_returns = float(self.statement_data.get('total_returns', 0))
+            opening = float(self.statement_data.get('opening_balance_usd', self.statement_data.get('opening_balance', 0)) or 0)
+            closing = float(self.statement_data.get('closing_balance_usd', self.statement_data.get('closing_balance', 0)) or 0)
+            total_debit = float(self.statement_data.get('total_invoices_usd', self.statement_data.get('total_invoices', 0)) or 0)
+            total_payments = float(self.statement_data.get('total_payments_usd', self.statement_data.get('total_payments', 0)) or 0)
+            total_returns = float(self.statement_data.get('total_returns_usd', self.statement_data.get('total_returns', 0)) or 0)
             
             summary_data = {
                 'اسم العميل': self.selected_customer.get('name', ''),
                 'كود العميل': self.selected_customer.get('code', ''),
-                'الرصيد الافتتاحي': f"{opening:,.2f} ل.س",
-                'إجمالي المدين': f"{total_debit:,.2f} ل.س",
-                'إجمالي الدائن': f"{(total_payments + total_returns):,.2f} ل.س",
-                'الرصيد الختامي': f"{closing:,.2f} ل.س"
+                'الرصيد الافتتاحي': config.format_usd(opening),
+                'إجمالي المدين': config.format_usd(total_debit),
+                'إجمالي الدائن': config.format_usd(total_payments + total_returns),
+                'الرصيد الختامي': config.format_usd(closing)
             }
             
             # Get date range

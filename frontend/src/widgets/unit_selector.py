@@ -112,9 +112,15 @@ class UnitSelectorComboBox(QComboBox):
             
             # Get price based on type
             if self.price_type == 'sale':
-                price = float(pu.get('sale_price', 0))
+                price = pu.get('sale_price_usd', None)
+                if price is None:
+                    price = pu.get('sale_price', 0)
+                price = float(price or 0)
             else:
-                price = float(pu.get('cost_price', 0))
+                price = pu.get('cost_price_usd', None)
+                if price is None:
+                    price = pu.get('cost_price', 0)
+                price = float(price or 0)
             
             # Format display text
             base_indicator = " ⭐" if is_base else ""
@@ -148,8 +154,15 @@ class UnitSelectorComboBox(QComboBox):
         pu_id = pu.get('id', 0)
         unit_name = pu.get('unit_name', '')
         unit_symbol = pu.get('unit_symbol', '')
-        sale_price = float(pu.get('sale_price', 0))
-        cost_price = float(pu.get('cost_price', 0))
+        sale_price = pu.get('sale_price_usd', None)
+        if sale_price is None:
+            sale_price = pu.get('sale_price', 0)
+        sale_price = float(sale_price or 0)
+
+        cost_price = pu.get('cost_price_usd', None)
+        if cost_price is None:
+            cost_price = pu.get('cost_price', 0)
+        cost_price = float(cost_price or 0)
         conversion_factor = float(pu.get('conversion_factor', 1))
         
         self.unit_changed.emit(
@@ -180,9 +193,15 @@ class UnitSelectorComboBox(QComboBox):
             return 0.0
         
         if self.price_type == 'sale':
-            return float(pu.get('sale_price', 0))
+            price = pu.get('sale_price_usd', None)
+            if price is None:
+                price = pu.get('sale_price', 0)
+            return float(price or 0)
         else:
-            return float(pu.get('cost_price', 0))
+            price = pu.get('cost_price_usd', None)
+            if price is None:
+                price = pu.get('cost_price', 0)
+            return float(price or 0)
     
     def get_conversion_factor(self) -> float:
         """Get the conversion factor of the currently selected unit."""

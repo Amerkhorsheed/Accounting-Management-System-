@@ -12,6 +12,7 @@ from django.db.models import Sum, F
 
 from apps.core.decorators import handle_service_error
 from apps.core.exceptions import ValidationException, InvalidOperationException
+from apps.core.utils import get_daily_fx, to_usd, from_usd
 
 
 class CreditValidationStatus(Enum):
@@ -86,7 +87,11 @@ class CreditService:
     WARNING_THRESHOLD = Decimal('0.8')  # 80% of credit limit
     
     @staticmethod
-    def validate_credit_limit(customer_id: int, amount: Decimal) -> CreditValidationResult:
+    def validate_credit_limit(
+        customer_id: int,
+        amount: Decimal,
+        fx_rate_date: Optional[date] = None
+    ) -> CreditValidationResult:
         """
         Validate if customer can take additional credit.
         
@@ -98,65 +103,79 @@ class CreditService:
         Requirements: 1.4, 6.3, 6.4
         """
         from .models import Customer
+        from apps.core.utils import get_daily_fx, to_usd
         
         customer = Customer.objects.get(id=customer_id)
         
-        current_balance = customer.current_balance
+        requested_amount_usd = Decimal(str(amount or 0))
+
+        current_balance_usd = customer.current_balance_usd
+
         credit_limit = customer.credit_limit
-        new_balance = current_balance + amount
-        available_credit = credit_limit - current_balance
+        credit_limit_usd = Decimal('0.00')
+        if credit_limit and credit_limit > 0:
+            fx_old, fx_new = get_daily_fx(fx_rate_date or date.today())
+            credit_limit_usd = to_usd(
+                credit_limit,
+                'SYP_OLD',
+                usd_to_syp_old=fx_old,
+                usd_to_syp_new=fx_new
+            )
+
+        new_balance_usd = current_balance_usd + requested_amount_usd
+        available_credit_usd = credit_limit_usd - current_balance_usd
         
         # If no credit limit set (0 or negative), allow unlimited credit
-        if credit_limit <= 0:
+        if credit_limit_usd <= 0:
             return CreditValidationResult(
                 status=CreditValidationStatus.OK,
                 can_proceed=True,
                 requires_override=False,
                 message='لا يوجد حد ائتمان محدد للعميل',
-                current_balance=current_balance,
-                credit_limit=credit_limit,
-                requested_amount=amount,
-                new_balance=new_balance,
+                current_balance=current_balance_usd,
+                credit_limit=credit_limit_usd,
+                requested_amount=requested_amount_usd,
+                new_balance=new_balance_usd,
                 available_credit=Decimal('999999999.99')  # Effectively unlimited
             )
         
-        warning_threshold_amount = credit_limit * CreditService.WARNING_THRESHOLD
+        warning_threshold_amount = credit_limit_usd * CreditService.WARNING_THRESHOLD
         
         # Check if new balance would exceed credit limit
-        if new_balance > credit_limit:
+        if new_balance_usd > credit_limit_usd:
             return CreditValidationResult(
                 status=CreditValidationStatus.ERROR,
                 can_proceed=False,
                 requires_override=True,
                 message=(
                     f'تجاوز حد الائتمان! '
-                    f'الرصيد الحالي: {current_balance}, '
-                    f'حد الائتمان: {credit_limit}, '
-                    f'المبلغ المطلوب: {amount}, '
-                    f'الرصيد الجديد: {new_balance}'
+                    f'الرصيد الحالي: {current_balance_usd}, '
+                    f'حد الائتمان: {credit_limit_usd}, '
+                    f'المبلغ المطلوب: {requested_amount_usd}, '
+                    f'الرصيد الجديد: {new_balance_usd}'
                 ),
-                current_balance=current_balance,
-                credit_limit=credit_limit,
-                requested_amount=amount,
-                new_balance=new_balance,
-                available_credit=available_credit
+                current_balance=current_balance_usd,
+                credit_limit=credit_limit_usd,
+                requested_amount=requested_amount_usd,
+                new_balance=new_balance_usd,
+                available_credit=available_credit_usd
             )
         
         # Check if new balance would reach warning threshold (80%)
-        if new_balance >= warning_threshold_amount:
+        if new_balance_usd >= warning_threshold_amount:
             return CreditValidationResult(
                 status=CreditValidationStatus.WARNING,
                 can_proceed=True,
                 requires_override=False,
                 message=(
                     f'تحذير: الرصيد يقترب من حد الائتمان! '
-                    f'الرصيد الجديد: {new_balance} من أصل {credit_limit}'
+                    f'الرصيد الجديد: {new_balance_usd} من أصل {credit_limit_usd}'
                 ),
-                current_balance=current_balance,
-                credit_limit=credit_limit,
-                requested_amount=amount,
-                new_balance=new_balance,
-                available_credit=available_credit
+                current_balance=current_balance_usd,
+                credit_limit=credit_limit_usd,
+                requested_amount=requested_amount_usd,
+                new_balance=new_balance_usd,
+                available_credit=available_credit_usd
             )
         
         # All good - below warning threshold
@@ -165,11 +184,11 @@ class CreditService:
             can_proceed=True,
             requires_override=False,
             message='الرصيد ضمن الحد المسموح',
-            current_balance=current_balance,
-            credit_limit=credit_limit,
-            requested_amount=amount,
-            new_balance=new_balance,
-            available_credit=available_credit
+            current_balance=current_balance_usd,
+            credit_limit=credit_limit_usd,
+            requested_amount=requested_amount_usd,
+            new_balance=new_balance_usd,
+            available_credit=available_credit_usd
         )
 
 
@@ -229,15 +248,31 @@ class CreditService:
         
         payment = Payment.objects.select_for_update().get(id=payment_id)
         customer = payment.customer
+
+        if payment.amount_usd == 0 and payment.amount and payment.transaction_currency:
+            if not payment.usd_to_syp_old_snapshot or not payment.usd_to_syp_new_snapshot:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(payment.fx_rate_date or payment.payment_date)
+                payment.usd_to_syp_old_snapshot = usd_to_syp_old
+                payment.usd_to_syp_new_snapshot = usd_to_syp_new
+
+            payment.amount_usd = payment.amount
+            if payment.transaction_currency != 'USD':
+                payment.amount_usd = to_usd(
+                    payment.amount,
+                    payment.transaction_currency,
+                    usd_to_syp_old=payment.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=payment.usd_to_syp_new_snapshot
+                )
+            payment.save(update_fields=['fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot', 'amount_usd'])
         
         # Calculate already allocated amount for this payment
-        existing_allocations = PaymentAllocation.objects.filter(
+        existing_allocations_usd = PaymentAllocation.objects.filter(
             payment=payment
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        ).aggregate(total=Sum('amount_usd'))['total'] or Decimal('0.00')
         
-        remaining_payment = payment.amount - existing_allocations
+        remaining_payment_usd = payment.amount_usd - existing_allocations_usd
         
-        if remaining_payment <= 0:
+        if remaining_payment_usd <= 0:
             raise ValidationException(
                 'لا يوجد مبلغ متبقي للتخصيص من هذه الدفعة',
                 field='amount'
@@ -253,18 +288,53 @@ class CreditService:
                 status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PARTIAL]
             ).order_by('invoice_date', 'id').select_for_update()
             
-            amount_to_allocate = remaining_payment
+            amount_to_allocate_usd = remaining_payment_usd
             
             for invoice in unpaid_invoices:
-                if amount_to_allocate <= 0:
+                if amount_to_allocate_usd <= 0:
                     break
+
+                if invoice.total_amount_usd == 0 and invoice.total_amount:
+                    if invoice.transaction_currency == 'USD':
+                        invoice.total_amount_usd = invoice.total_amount
+                    else:
+                        if not invoice.usd_to_syp_old_snapshot or not invoice.usd_to_syp_new_snapshot:
+                            usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.fx_rate_date or invoice.invoice_date)
+                            invoice.fx_rate_date = invoice.fx_rate_date or invoice.invoice_date
+                            invoice.usd_to_syp_old_snapshot = usd_to_syp_old
+                            invoice.usd_to_syp_new_snapshot = usd_to_syp_new
+                        invoice.total_amount_usd = to_usd(
+                            invoice.total_amount,
+                            invoice.transaction_currency,
+                            usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                            usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                        )
+
+                    if invoice.paid_amount_usd == 0 and invoice.paid_amount:
+                        if invoice.transaction_currency == 'USD':
+                            invoice.paid_amount_usd = invoice.paid_amount
+                        else:
+                            invoice.paid_amount_usd = to_usd(
+                                invoice.paid_amount,
+                                invoice.transaction_currency,
+                                usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                                usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                            )
+
+                    invoice.save(update_fields=['fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot', 'total_amount_usd', 'paid_amount_usd'])
                 
-                invoice_remaining = invoice.remaining_amount
-                if invoice_remaining <= 0:
+                invoice_remaining_usd = invoice.remaining_amount_usd
+                if invoice_remaining_usd <= 0:
                     continue
                 
                 # Allocate the minimum of remaining payment and invoice remaining
-                allocation_amount = min(amount_to_allocate, invoice_remaining)
+                allocation_amount_usd = min(amount_to_allocate_usd, invoice_remaining_usd)
+                allocation_amount = from_usd(
+                    allocation_amount_usd,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
                 
                 # Check if allocation already exists for this payment-invoice pair
                 existing = PaymentAllocation.objects.filter(
@@ -274,27 +344,48 @@ class CreditService:
                 
                 if existing:
                     # Update existing allocation
-                    existing.amount += allocation_amount
-                    existing.save()
+                    if existing.amount_usd == 0 and existing.amount:
+                        existing.amount_usd = to_usd(
+                            existing.amount,
+                            invoice.transaction_currency,
+                            usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                            usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                        )
+                    existing.amount_usd += allocation_amount_usd
+                    existing.amount = from_usd(
+                        existing.amount_usd,
+                        invoice.transaction_currency,
+                        usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                    )
+                    existing.save(update_fields=['amount', 'amount_usd'])
                     created_allocations.append(existing)
                 else:
                     # Create new allocation
                     allocation = PaymentAllocation.objects.create(
                         payment=payment,
                         invoice=invoice,
-                        amount=allocation_amount
+                        amount=allocation_amount,
+                        amount_usd=allocation_amount_usd
                     )
                     created_allocations.append(allocation)
                 
                 # Update invoice paid amount and status
-                invoice.paid_amount += allocation_amount
-                if invoice.paid_amount >= invoice.total_amount:
+                invoice.paid_amount_usd += allocation_amount_usd
+                invoice.paid_amount = from_usd(
+                    invoice.paid_amount_usd,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
+
+                if invoice.paid_amount_usd >= invoice.total_amount_usd - Decimal('0.01'):
                     invoice.status = Invoice.Status.PAID
                 else:
                     invoice.status = Invoice.Status.PARTIAL
-                invoice.save()
+                invoice.save(update_fields=['paid_amount', 'paid_amount_usd', 'status'])
                 
-                amount_to_allocate -= allocation_amount
+                amount_to_allocate_usd -= allocation_amount_usd
         
         else:
             # Manual allocation
@@ -304,20 +395,66 @@ class CreditService:
                     field='allocations'
                 )
             
-            total_allocation = sum(Decimal(str(a['amount'])) for a in allocations)
-            
-            if total_allocation > remaining_payment:
+            total_allocation_usd = Decimal('0.00')
+
+            for alloc in allocations:
+                invoice_id = alloc['invoice_id']
+                amount = alloc.get('amount')
+                amount_usd = alloc.get('amount_usd')
+
+                if amount_usd is not None:
+                    amount_usd = Decimal(str(amount_usd))
+                    if amount_usd <= 0:
+                        continue
+                else:
+                    if amount is None:
+                        continue
+                    amount = Decimal(str(amount))
+                    if amount <= 0:
+                        continue
+
+                invoice = Invoice.objects.get(id=invoice_id)
+
+                if invoice.transaction_currency != 'USD' and (not invoice.usd_to_syp_old_snapshot or not invoice.usd_to_syp_new_snapshot):
+                    usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.fx_rate_date or invoice.invoice_date)
+                    invoice.fx_rate_date = invoice.fx_rate_date or invoice.invoice_date
+                    invoice.usd_to_syp_old_snapshot = usd_to_syp_old
+                    invoice.usd_to_syp_new_snapshot = usd_to_syp_new
+                    invoice.save(update_fields=['fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot'])
+
+                alloc_usd = amount_usd
+                if alloc_usd is None:
+                    alloc_usd = amount
+                    if invoice.transaction_currency != 'USD':
+                        alloc_usd = to_usd(
+                            amount,
+                            invoice.transaction_currency,
+                            usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                            usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                        )
+                total_allocation_usd += alloc_usd
+
+            if total_allocation_usd > remaining_payment_usd + Decimal('0.01'):
                 raise ValidationException(
-                    f'إجمالي التخصيصات ({total_allocation}) يتجاوز المبلغ المتبقي ({remaining_payment})',
+                    f'إجمالي التخصيصات ({total_allocation_usd}) يتجاوز المبلغ المتبقي ({remaining_payment_usd})',
                     field='amount'
                 )
             
             for alloc in allocations:
                 invoice_id = alloc['invoice_id']
-                amount = Decimal(str(alloc['amount']))
-                
-                if amount <= 0:
-                    continue
+                amount = alloc.get('amount')
+                amount_usd = alloc.get('amount_usd')
+
+                if amount_usd is not None:
+                    amount_usd = Decimal(str(amount_usd))
+                    if amount_usd <= 0:
+                        continue
+                else:
+                    if amount is None:
+                        continue
+                    amount = Decimal(str(amount))
+                    if amount <= 0:
+                        continue
                 
                 invoice = Invoice.objects.select_for_update().get(id=invoice_id)
                 
@@ -336,12 +473,59 @@ class CreditService:
                     )
                 
                 # Validate allocation doesn't exceed remaining
-                invoice_remaining = invoice.remaining_amount
-                if amount > invoice_remaining:
+                if invoice.total_amount_usd == 0 and invoice.total_amount:
+                    if invoice.transaction_currency == 'USD':
+                        invoice.total_amount_usd = invoice.total_amount
+                    else:
+                        if not invoice.usd_to_syp_old_snapshot or not invoice.usd_to_syp_new_snapshot:
+                            usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.fx_rate_date or invoice.invoice_date)
+                            invoice.fx_rate_date = invoice.fx_rate_date or invoice.invoice_date
+                            invoice.usd_to_syp_old_snapshot = usd_to_syp_old
+                            invoice.usd_to_syp_new_snapshot = usd_to_syp_new
+                        invoice.total_amount_usd = to_usd(
+                            invoice.total_amount,
+                            invoice.transaction_currency,
+                            usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                            usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                        )
+
+                    if invoice.paid_amount_usd == 0 and invoice.paid_amount:
+                        if invoice.transaction_currency == 'USD':
+                            invoice.paid_amount_usd = invoice.paid_amount
+                        else:
+                            invoice.paid_amount_usd = to_usd(
+                                invoice.paid_amount,
+                                invoice.transaction_currency,
+                                usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                                usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                            )
+
+                    invoice.save(update_fields=['fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot', 'total_amount_usd', 'paid_amount_usd'])
+
+                invoice_remaining_usd = invoice.remaining_amount_usd
+
+                alloc_usd = amount_usd
+                if alloc_usd is None:
+                    alloc_usd = amount
+                    if invoice.transaction_currency != 'USD':
+                        alloc_usd = to_usd(
+                            amount,
+                            invoice.transaction_currency,
+                            usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                            usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                        )
+
+                if alloc_usd > invoice_remaining_usd + Decimal('0.01'):
+                    requested_amount = from_usd(
+                        alloc_usd,
+                        invoice.transaction_currency,
+                        usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                    )
                     raise AllocationExceedsRemainingException(
                         invoice.invoice_number,
-                        invoice_remaining,
-                        amount
+                        invoice.remaining_amount,
+                        requested_amount
                     )
                 
                 # Check if allocation already exists
@@ -349,34 +533,56 @@ class CreditService:
                     payment=payment,
                     invoice=invoice
                 ).first()
+
+                amount_usd = alloc_usd
+                amount = from_usd(
+                    amount_usd,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
                 
                 if existing:
                     # Validate combined allocation doesn't exceed remaining
-                    new_total = existing.amount + amount
-                    if new_total > invoice_remaining + existing.amount:
-                        raise AllocationExceedsRemainingException(
-                            invoice.invoice_number,
-                            invoice_remaining + existing.amount,
-                            new_total
+                    if existing.amount_usd == 0 and existing.amount:
+                        existing.amount_usd = to_usd(
+                            existing.amount,
+                            invoice.transaction_currency,
+                            usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                            usd_to_syp_new=invoice.usd_to_syp_new_snapshot
                         )
-                    existing.amount = new_total
-                    existing.save()
+                    existing.amount_usd += amount_usd
+                    existing.amount = from_usd(
+                        existing.amount_usd,
+                        invoice.transaction_currency,
+                        usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                    )
+                    existing.save(update_fields=['amount', 'amount_usd'])
                     created_allocations.append(existing)
                 else:
                     allocation = PaymentAllocation.objects.create(
                         payment=payment,
                         invoice=invoice,
-                        amount=amount
+                        amount=amount,
+                        amount_usd=amount_usd
                     )
                     created_allocations.append(allocation)
                 
                 # Update invoice paid amount and status
-                invoice.paid_amount += amount
-                if invoice.paid_amount >= invoice.total_amount:
+                invoice.paid_amount_usd += amount_usd
+                invoice.paid_amount = from_usd(
+                    invoice.paid_amount_usd,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
+
+                if invoice.paid_amount_usd >= invoice.total_amount_usd - Decimal('0.01'):
                     invoice.status = Invoice.Status.PAID
                 else:
                     invoice.status = Invoice.Status.PARTIAL
-                invoice.save()
+                invoice.save(update_fields=['paid_amount', 'paid_amount_usd', 'status'])
         
         return created_allocations
 
@@ -401,17 +607,50 @@ class CreditService:
             status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PARTIAL]
         ).order_by('invoice_date', 'id')
         
-        return [
-            {
-                'id': inv.id,
-                'invoice_number': inv.invoice_number,
-                'invoice_date': inv.invoice_date,
-                'due_date': inv.due_date,
-                'total_amount': inv.total_amount,
-                'paid_amount': inv.paid_amount,
-                'remaining_amount': inv.remaining_amount,
-                'status': inv.status,
-                'is_overdue': inv.due_date and inv.due_date < date.today()
-            }
-            for inv in invoices
-        ]
+        results = []
+        for inv in invoices:
+            if inv.total_amount_usd == 0 and inv.total_amount:
+                if inv.transaction_currency == 'USD':
+                    inv.total_amount_usd = inv.total_amount
+                    inv.paid_amount_usd = inv.paid_amount
+                else:
+                    if not inv.usd_to_syp_old_snapshot or not inv.usd_to_syp_new_snapshot:
+                        usd_to_syp_old, usd_to_syp_new = get_daily_fx(inv.fx_rate_date or inv.invoice_date)
+                        inv.fx_rate_date = inv.fx_rate_date or inv.invoice_date
+                        inv.usd_to_syp_old_snapshot = usd_to_syp_old
+                        inv.usd_to_syp_new_snapshot = usd_to_syp_new
+                    inv.total_amount_usd = to_usd(
+                        inv.total_amount,
+                        inv.transaction_currency,
+                        usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                    )
+                    inv.paid_amount_usd = to_usd(
+                        inv.paid_amount,
+                        inv.transaction_currency,
+                        usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                    )
+                inv.save(update_fields=['fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot', 'total_amount_usd', 'paid_amount_usd'])
+
+            results.append(
+                {
+                    'id': inv.id,
+                    'invoice_number': inv.invoice_number,
+                    'invoice_date': inv.invoice_date,
+                    'due_date': inv.due_date,
+                    'transaction_currency': inv.transaction_currency,
+                    'fx_rate_date': inv.fx_rate_date,
+                    'usd_to_syp_old_snapshot': inv.usd_to_syp_old_snapshot,
+                    'usd_to_syp_new_snapshot': inv.usd_to_syp_new_snapshot,
+                    'total_amount': inv.total_amount,
+                    'paid_amount': inv.paid_amount,
+                    'remaining_amount': inv.remaining_amount,
+                    'total_amount_usd': inv.total_amount_usd,
+                    'paid_amount_usd': inv.paid_amount_usd,
+                    'remaining_amount_usd': inv.remaining_amount_usd,
+                    'status': inv.status,
+                    'is_overdue': inv.due_date and inv.due_date < date.today()
+                }
+            )
+        return results

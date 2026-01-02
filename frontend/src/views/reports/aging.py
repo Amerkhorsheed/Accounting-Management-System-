@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.cards import Card, StatCard
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
@@ -277,7 +277,7 @@ class AgingReportView(QWidget):
         count_label = card.findChild(QLabel, "bucket_count")
         
         if value_label:
-            value_label.setText(f"{amount:,.2f} ل.س")
+            value_label.setText(config.format_usd(amount))
             value_label.setStyleSheet(f"color: {color};")
         
         if count_label:
@@ -323,7 +323,7 @@ class AgingReportView(QWidget):
         current = buckets.get('current', {})
         self._update_bucket_card(
             self.current_card,
-            float(current.get('total', 0)),
+            float(current.get('total_usd', current.get('total', 0)) or 0),
             int(current.get('invoice_count', 0)),
             Colors.SUCCESS
         )
@@ -332,7 +332,7 @@ class AgingReportView(QWidget):
         days_1_30 = buckets.get('1_30', {})
         self._update_bucket_card(
             self.days_1_30_card,
-            float(days_1_30.get('total', 0)),
+            float(days_1_30.get('total_usd', days_1_30.get('total', 0)) or 0),
             int(days_1_30.get('invoice_count', 0)),
             Colors.INFO
         )
@@ -341,7 +341,7 @@ class AgingReportView(QWidget):
         days_31_60 = buckets.get('31_60', {})
         self._update_bucket_card(
             self.days_31_60_card,
-            float(days_31_60.get('total', 0)),
+            float(days_31_60.get('total_usd', days_31_60.get('total', 0)) or 0),
             int(days_31_60.get('invoice_count', 0)),
             Colors.WARNING
         )
@@ -350,7 +350,7 @@ class AgingReportView(QWidget):
         days_61_90 = buckets.get('61_90', {})
         self._update_bucket_card(
             self.days_61_90_card,
-            float(days_61_90.get('total', 0)),
+            float(days_61_90.get('total_usd', days_61_90.get('total', 0)) or 0),
             int(days_61_90.get('invoice_count', 0)),
             Colors.DANGER
         )
@@ -359,22 +359,22 @@ class AgingReportView(QWidget):
         over_90 = buckets.get('over_90', {})
         self._update_bucket_card(
             self.days_over_90_card,
-            float(over_90.get('total', 0)),
+            float(over_90.get('total_usd', over_90.get('total', 0)) or 0),
             int(over_90.get('invoice_count', 0)),
             Colors.DANGER
         )
         
         # Update total from summary
         summary = self.report_data.get('summary', {})
-        total = float(summary.get('total_outstanding', 0))
-        self.total_amount_label.setText(f"{total:,.2f} ل.س")
+        total = float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)
+        self.total_amount_label.setText(config.format_usd(total))
         
         # Calculate overdue percentage (everything except current)
         overdue = (
-            float(days_1_30.get('total', 0)) +
-            float(days_31_60.get('total', 0)) +
-            float(days_61_90.get('total', 0)) +
-            float(over_90.get('total', 0))
+            float(days_1_30.get('total_usd', days_1_30.get('total', 0)) or 0) +
+            float(days_31_60.get('total_usd', days_31_60.get('total', 0)) or 0) +
+            float(days_61_90.get('total_usd', days_61_90.get('total', 0)) or 0) +
+            float(over_90.get('total_usd', over_90.get('total', 0)) or 0)
         )
         
         if total > 0:
@@ -409,24 +409,24 @@ class AgingReportView(QWidget):
             self.customer_table.setItem(row, 0, name_item)
             
             # Current amount
-            current = float(customer.get('current', 0))
-            current_item = QTableWidgetItem(f"{current:,.2f}")
+            current = float(customer.get('current_usd', customer.get('current', 0)) or 0)
+            current_item = QTableWidgetItem(config.format_usd(current))
             current_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if current > 0:
                 current_item.setForeground(QColor(Colors.SUCCESS))
             self.customer_table.setItem(row, 1, current_item)
             
             # 1-30 days
-            days_1_30 = float(customer.get('1_30', 0))
-            days_1_30_item = QTableWidgetItem(f"{days_1_30:,.2f}")
+            days_1_30 = float(customer.get('1_30_usd', customer.get('1_30', 0)) or 0)
+            days_1_30_item = QTableWidgetItem(config.format_usd(days_1_30))
             days_1_30_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if days_1_30 > 0:
                 days_1_30_item.setForeground(QColor(Colors.INFO))
             self.customer_table.setItem(row, 2, days_1_30_item)
             
             # 31-60 days
-            days_31_60 = float(customer.get('31_60', 0))
-            days_31_60_item = QTableWidgetItem(f"{days_31_60:,.2f}")
+            days_31_60 = float(customer.get('31_60_usd', customer.get('31_60', 0)) or 0)
+            days_31_60_item = QTableWidgetItem(config.format_usd(days_31_60))
             days_31_60_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if days_31_60 > 0:
                 days_31_60_item.setForeground(QColor(Colors.WARNING))
@@ -434,8 +434,8 @@ class AgingReportView(QWidget):
             
             # 61-90 days - severe highlighting
             # Requirements: 5.5 - Highlight severely overdue
-            days_61_90 = float(customer.get('61_90', 0))
-            days_61_90_item = QTableWidgetItem(f"{days_61_90:,.2f}")
+            days_61_90 = float(customer.get('61_90_usd', customer.get('61_90', 0)) or 0)
+            days_61_90_item = QTableWidgetItem(config.format_usd(days_61_90))
             days_61_90_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if days_61_90 > 0:
                 days_61_90_item.setForeground(QColor(Colors.DANGER))
@@ -443,8 +443,8 @@ class AgingReportView(QWidget):
             self.customer_table.setItem(row, 4, days_61_90_item)
             
             # Over 90 days - severe highlighting
-            over_90 = float(customer.get('over_90', 0))
-            over_90_item = QTableWidgetItem(f"{over_90:,.2f}")
+            over_90 = float(customer.get('over_90_usd', customer.get('over_90', 0)) or 0)
+            over_90_item = QTableWidgetItem(config.format_usd(over_90))
             over_90_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if over_90 > 0:
                 over_90_item.setForeground(QColor(Colors.DANGER))
@@ -453,8 +453,8 @@ class AgingReportView(QWidget):
             self.customer_table.setItem(row, 5, over_90_item)
             
             # Total
-            total = float(customer.get('total', 0))
-            total_item = QTableWidgetItem(f"{total:,.2f}")
+            total = float(customer.get('total_usd', customer.get('total', 0)) or 0)
+            total_item = QTableWidgetItem(config.format_usd(total))
             total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             total_item.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
             self.customer_table.setItem(row, 6, total_item)
@@ -497,20 +497,20 @@ class AgingReportView(QWidget):
             self.invoice_table.setItem(row, 3, due_date_item)
             
             # Total amount
-            total = float(invoice.get('total_amount', 0))
-            total_item = QTableWidgetItem(f"{total:,.2f}")
+            total = float(invoice.get('total_amount_usd', invoice.get('total_amount', 0)) or 0)
+            total_item = QTableWidgetItem(config.format_usd(total))
             total_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.invoice_table.setItem(row, 4, total_item)
             
             # Paid amount
-            paid = float(invoice.get('paid_amount', 0))
-            paid_item = QTableWidgetItem(f"{paid:,.2f}")
+            paid = float(invoice.get('paid_amount_usd', invoice.get('paid_amount', 0)) or 0)
+            paid_item = QTableWidgetItem(config.format_usd(paid))
             paid_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.invoice_table.setItem(row, 5, paid_item)
             
             # Remaining amount
-            remaining = float(invoice.get('remaining_amount', 0))
-            remaining_item = QTableWidgetItem(f"{remaining:,.2f}")
+            remaining = float(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', 0)) or 0)
+            remaining_item = QTableWidgetItem(config.format_usd(remaining))
             remaining_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             remaining_item.setForeground(QColor(Colors.DANGER))
             self.invoice_table.setItem(row, 6, remaining_item)
@@ -550,7 +550,7 @@ class AgingReportView(QWidget):
                     self,
                     "معلومات العميل",
                     f"العميل: {customer.get('name', '')}\n"
-                    f"إجمالي المستحقات: {float(customer.get('total', 0)):,.2f} ل.س"
+                    f"إجمالي المستحقات: {config.format_usd(float(customer.get('total_usd', customer.get('total', 0)) or 0))}"
                 )
     
     def _export_excel(self):
@@ -598,12 +598,12 @@ class AgingReportView(QWidget):
             summary = self.report_data.get('summary', {})
             buckets = self.aging_buckets
             summary_data = {
-                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
-                'جاري (غير متأخر)': f"{float(buckets.get('current', {}).get('total', 0)):,.2f} ل.س",
-                '1-30 يوم': f"{float(buckets.get('1_30', {}).get('total', 0)):,.2f} ل.س",
-                '31-60 يوم': f"{float(buckets.get('31_60', {}).get('total', 0)):,.2f} ل.س",
-                '61-90 يوم': f"{float(buckets.get('61_90', {}).get('total', 0)):,.2f} ل.س",
-                'أكثر من 90 يوم': f"{float(buckets.get('over_90', {}).get('total', 0)):,.2f} ل.س"
+                'إجمالي المستحقات': config.format_usd(float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)),
+                'جاري (غير متأخر)': config.format_usd(float(buckets.get('current', {}).get('total_usd', buckets.get('current', {}).get('total', 0)) or 0)),
+                '1-30 يوم': config.format_usd(float(buckets.get('1_30', {}).get('total_usd', buckets.get('1_30', {}).get('total', 0)) or 0)),
+                '31-60 يوم': config.format_usd(float(buckets.get('31_60', {}).get('total_usd', buckets.get('31_60', {}).get('total', 0)) or 0)),
+                '61-90 يوم': config.format_usd(float(buckets.get('61_90', {}).get('total_usd', buckets.get('61_90', {}).get('total', 0)) or 0)),
+                'أكثر من 90 يوم': config.format_usd(float(buckets.get('over_90', {}).get('total_usd', buckets.get('over_90', {}).get('total', 0)) or 0))
             }
             
             # Export to Excel
@@ -669,12 +669,12 @@ class AgingReportView(QWidget):
             summary = self.report_data.get('summary', {})
             buckets = self.aging_buckets
             summary_data = {
-                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
-                'جاري (غير متأخر)': f"{float(buckets.get('current', {}).get('total', 0)):,.2f} ل.س",
-                '1-30 يوم': f"{float(buckets.get('1_30', {}).get('total', 0)):,.2f} ل.س",
-                '31-60 يوم': f"{float(buckets.get('31_60', {}).get('total', 0)):,.2f} ل.س",
-                '61-90 يوم': f"{float(buckets.get('61_90', {}).get('total', 0)):,.2f} ل.س",
-                'أكثر من 90 يوم': f"{float(buckets.get('over_90', {}).get('total', 0)):,.2f} ل.س"
+                'إجمالي المستحقات': config.format_usd(float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)),
+                'جاري (غير متأخر)': config.format_usd(float(buckets.get('current', {}).get('total_usd', buckets.get('current', {}).get('total', 0)) or 0)),
+                '1-30 يوم': config.format_usd(float(buckets.get('1_30', {}).get('total_usd', buckets.get('1_30', {}).get('total', 0)) or 0)),
+                '31-60 يوم': config.format_usd(float(buckets.get('31_60', {}).get('total_usd', buckets.get('31_60', {}).get('total', 0)) or 0)),
+                '61-90 يوم': config.format_usd(float(buckets.get('61_90', {}).get('total_usd', buckets.get('61_90', {}).get('total', 0)) or 0)),
+                'أكثر من 90 يوم': config.format_usd(float(buckets.get('over_90', {}).get('total_usd', buckets.get('over_90', {}).get('total', 0)) or 0))
             }
             
             # Export to PDF

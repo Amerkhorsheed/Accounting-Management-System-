@@ -9,6 +9,12 @@ from apps.core.utils import generate_code
 from apps.inventory.models import Product, Warehouse
 
 
+class TransactionCurrency(models.TextChoices):
+    USD = 'USD', 'USD'
+    SYP_OLD = 'SYP_OLD', 'الليرة السورية القديمة'
+    SYP_NEW = 'SYP_NEW', 'الليرة السورية الجديدة'
+
+
 class Customer(BaseModel, AddressModel, ContactModel):
     """
     Customer model.
@@ -80,11 +86,23 @@ class Customer(BaseModel, AddressModel, ContactModel):
         default=Decimal('0.00'),
         verbose_name='الرصيد الافتتاحي'
     )
+    opening_balance_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='الرصيد الافتتاحي (USD)'
+    )
     current_balance = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal('0.00'),
         verbose_name='الرصيد الحالي'
+    )
+    current_balance_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='الرصيد الحالي (USD)'
     )
     notes = models.TextField(
         blank=True,
@@ -187,6 +205,32 @@ class Invoice(BaseModel):
         default=Status.DRAFT,
         verbose_name='الحالة'
     )
+
+    transaction_currency = models.CharField(
+        max_length=10,
+        choices=TransactionCurrency.choices,
+        default=TransactionCurrency.SYP_OLD,
+        verbose_name='عملة المعاملة'
+    )
+    fx_rate_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='تاريخ سعر الصرف'
+    )
+    usd_to_syp_old_snapshot = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        verbose_name='سعر صرف الدولار مقابل الليرة القديمة'
+    )
+    usd_to_syp_new_snapshot = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        verbose_name='سعر صرف الدولار مقابل الليرة الجديدة'
+    )
     
     # Amounts
     subtotal = models.DecimalField(
@@ -219,11 +263,23 @@ class Invoice(BaseModel):
         default=Decimal('0.00'),
         verbose_name='المبلغ الإجمالي'
     )
+    total_amount_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='المبلغ الإجمالي (USD)'
+    )
     paid_amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal('0.00'),
         verbose_name='المبلغ المدفوع'
+    )
+    paid_amount_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='المبلغ المدفوع (USD)'
     )
     
     notes = models.TextField(
@@ -264,6 +320,10 @@ class Invoice(BaseModel):
     def remaining_amount(self):
         return self.total_amount - self.paid_amount
 
+    @property
+    def remaining_amount_usd(self):
+        return self.total_amount_usd - self.paid_amount_usd
+
     def calculate_totals(self):
         """Recalculate invoice totals from items."""
         items = self.items.all()
@@ -276,8 +336,36 @@ class Invoice(BaseModel):
         taxable = self.subtotal - self.discount_amount
         self.tax_amount = sum(item.tax_amount for item in items)
         self.total_amount = taxable + self.tax_amount
-        
-        self.save(update_fields=['subtotal', 'discount_amount', 'tax_amount', 'total_amount'])
+
+        if self.transaction_currency == TransactionCurrency.USD:
+            self.total_amount_usd = self.total_amount
+            self.paid_amount_usd = self.paid_amount
+        elif self.usd_to_syp_old_snapshot is not None and self.usd_to_syp_new_snapshot is not None:
+            from apps.core.utils import to_usd
+
+            self.total_amount_usd = to_usd(
+                self.total_amount,
+                self.transaction_currency,
+                usd_to_syp_old=self.usd_to_syp_old_snapshot,
+                usd_to_syp_new=self.usd_to_syp_new_snapshot
+            )
+            self.paid_amount_usd = to_usd(
+                self.paid_amount,
+                self.transaction_currency,
+                usd_to_syp_old=self.usd_to_syp_old_snapshot,
+                usd_to_syp_new=self.usd_to_syp_new_snapshot
+            )
+
+        self.save(
+            update_fields=[
+                'subtotal',
+                'discount_amount',
+                'tax_amount',
+                'total_amount',
+                'total_amount_usd',
+                'paid_amount_usd',
+            ]
+        )
 
 
 class InvoiceItem(BaseModel):
@@ -420,10 +508,42 @@ class Payment(BaseModel):
     payment_date = models.DateField(
         verbose_name='تاريخ الدفع'
     )
+
+    transaction_currency = models.CharField(
+        max_length=10,
+        choices=TransactionCurrency.choices,
+        default=TransactionCurrency.SYP_OLD,
+        verbose_name='عملة المعاملة'
+    )
+    fx_rate_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='تاريخ سعر الصرف'
+    )
+    usd_to_syp_old_snapshot = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        verbose_name='سعر صرف الدولار مقابل الليرة القديمة'
+    )
+    usd_to_syp_new_snapshot = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        verbose_name='سعر صرف الدولار مقابل الليرة الجديدة'
+    )
     amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         verbose_name='المبلغ'
+    )
+    amount_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='المبلغ (USD)'
     )
     payment_method = models.CharField(
         max_length=20,
@@ -482,11 +602,42 @@ class SalesReturn(BaseModel):
     return_date = models.DateField(
         verbose_name='تاريخ المرتجع'
     )
+    transaction_currency = models.CharField(
+        max_length=10,
+        choices=TransactionCurrency.choices,
+        default=TransactionCurrency.SYP_OLD,
+        verbose_name='عملة المعاملة'
+    )
+    fx_rate_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='تاريخ سعر الصرف'
+    )
+    usd_to_syp_old_snapshot = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        verbose_name='سعر صرف الدولار مقابل الليرة القديمة'
+    )
+    usd_to_syp_new_snapshot = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        blank=True,
+        null=True,
+        verbose_name='سعر صرف الدولار مقابل الليرة الجديدة'
+    )
     total_amount = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal('0.00'),
         verbose_name='المبلغ الإجمالي'
+    )
+    total_amount_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='المبلغ الإجمالي (USD)'
     )
     reason = models.TextField(
         verbose_name='سبب الإرجاع'
@@ -583,6 +734,12 @@ class PaymentAllocation(BaseModel):
         max_digits=15,
         decimal_places=2,
         verbose_name='المبلغ المخصص'
+    )
+    amount_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name='المبلغ المخصص (USD)'
     )
 
     class Meta:

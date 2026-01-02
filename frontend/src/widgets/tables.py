@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction, QBrush, QColor
 
-from ..config import Colors, Fonts
+from ..config import Colors, Fonts, config
 
 
 class DataTable(QFrame):
@@ -238,7 +238,10 @@ class DataTable(QFrame):
                 # Format value
                 if column.get('type') == 'currency':
                     try:
-                        value = f"{float(value):,.2f}"
+                        if isinstance(key, str) and key.endswith('_usd'):
+                            value = config.format_usd(float(value or 0))
+                        else:
+                            value = f"{float(value):,.2f}"
                     except (ValueError, TypeError):
                         value = str(value)
                 elif column.get('type') == 'date':

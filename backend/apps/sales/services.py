@@ -2,11 +2,13 @@
 Sales Services - Business Logic
 """
 from decimal import Decimal
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from django.db import transaction
 from django.db.models import Sum, F
 from apps.core.exceptions import ValidationException, InvalidOperationException, InsufficientStockException
 from apps.core.decorators import handle_service_error
+from apps.core.utils import get_daily_fx, to_usd, from_usd, normalize_fx
 from apps.inventory.services import InventoryService
 from apps.inventory.models import StockMovement, Product
 from .models import Customer, Invoice, InvoiceItem, Payment, SalesReturn, SalesReturnItem, PaymentAllocation, CreditLimitOverride
@@ -33,7 +35,11 @@ class SalesService:
         user=None,
         deduct_stock: bool = True,
         override_credit_limit: bool = False,
-        override_reason: str = None
+        override_reason: str = None,
+        transaction_currency: str = 'SYP_OLD',
+        fx_rate_date=None,
+        usd_to_syp_old_snapshot: Decimal = None,
+        usd_to_syp_new_snapshot: Decimal = None
     ) -> Invoice:
         """
         Create a new sales invoice.
@@ -69,6 +75,15 @@ class SalesService:
             ValidationException: If credit invoice without customer or invalid override
         """
         from apps.inventory.models import ProductUnit
+
+        needs_fx = transaction_currency != 'USD' or invoice_type == Invoice.InvoiceType.CREDIT
+        usd_to_syp_old = None
+        usd_to_syp_new = None
+        if needs_fx:
+            if usd_to_syp_old_snapshot is None and usd_to_syp_new_snapshot is None:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(fx_rate_date or invoice_date)
+            else:
+                usd_to_syp_old, usd_to_syp_new = normalize_fx(usd_to_syp_old_snapshot, usd_to_syp_new_snapshot)
         
         # Requirement 1.1: Credit invoices require customer selection
         if invoice_type == Invoice.InvoiceType.CREDIT:
@@ -116,7 +131,24 @@ class SalesService:
         estimated_total = Decimal('0.00')
         for item in items:
             product = Product.objects.get(id=item['product_id'])
-            unit_price = Decimal(str(item.get('unit_price', product.sale_price)))
+
+            if transaction_currency == 'USD':
+                if product.sale_price_usd is not None:
+                    default_unit_price = product.sale_price_usd
+                else:
+                    default_unit_price = product.sale_price
+            else:
+                if product.sale_price_usd is not None and usd_to_syp_old is not None and usd_to_syp_new is not None:
+                    default_unit_price = from_usd(
+                        product.sale_price_usd,
+                        transaction_currency,
+                        usd_to_syp_old=usd_to_syp_old,
+                        usd_to_syp_new=usd_to_syp_new
+                    )
+                else:
+                    default_unit_price = product.sale_price
+
+            unit_price = Decimal(str(item.get('unit_price', default_unit_price)))
             quantity = Decimal(str(item['quantity']))
             item_discount = Decimal(str(item.get('discount_percent', '0.00')))
             tax_rate = Decimal(str(item.get('tax_rate', product.tax_rate if product.is_taxable else '0.00')))
@@ -132,24 +164,34 @@ class SalesService:
             estimated_total -= (estimated_total * discount_percent) / 100
         if discount_amount > 0:
             estimated_total -= discount_amount
+
+        estimated_total_usd = estimated_total
+        if transaction_currency != 'USD':
+            if usd_to_syp_old is None or usd_to_syp_new is None:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(fx_rate_date or invoice_date)
+            estimated_total_usd = to_usd(
+                estimated_total,
+                transaction_currency,
+                usd_to_syp_old=usd_to_syp_old,
+                usd_to_syp_new=usd_to_syp_new
+            )
         
         credit_validation_result = None
         
         # Requirement 1.4: Credit limit validation for credit invoices
         if invoice_type == Invoice.InvoiceType.CREDIT and customer_id:
             credit_validation_result = CreditService.validate_credit_limit(
-                customer_id, estimated_total
+                customer_id, estimated_total_usd, fx_rate_date or invoice_date
             )
             
             # If credit limit exceeded and no override requested
             if credit_validation_result.status == CreditValidationStatus.ERROR:
                 if not override_credit_limit:
-                    customer = Customer.objects.get(id=customer_id)
                     raise CreditLimitExceededException(
                         customer.name,
                         credit_validation_result.current_balance,
                         credit_validation_result.credit_limit,
-                        estimated_total
+                        estimated_total_usd
                     )
                 
                 # Override requested - validate reason is provided
@@ -170,6 +212,10 @@ class SalesService:
             warehouse_id=warehouse_id,
             invoice_date=invoice_date,
             due_date=due_date,
+            transaction_currency=transaction_currency,
+            fx_rate_date=(fx_rate_date or invoice_date) if needs_fx else None,
+            usd_to_syp_old_snapshot=usd_to_syp_old if needs_fx else None,
+            usd_to_syp_new_snapshot=usd_to_syp_new if needs_fx else None,
             discount_percent=discount_percent,
             discount_amount=discount_amount,
             notes=notes,
@@ -186,14 +232,67 @@ class SalesService:
             
             if product_unit_id:
                 product_unit = ProductUnit.objects.get(id=product_unit_id)
+
+            if transaction_currency == 'USD':
+                if product_unit and product_unit.sale_price_usd is not None:
+                    default_unit_price = product_unit.sale_price_usd
+                elif product.sale_price_usd is not None:
+                    default_unit_price = product.sale_price_usd
+                else:
+                    default_unit_price = product.sale_price
+
+                if product_unit and product_unit.cost_price_usd is not None:
+                    default_cost_price = product_unit.cost_price_usd
+                elif product.cost_price_usd is not None:
+                    default_cost_price = product.cost_price_usd
+                else:
+                    default_cost_price = product.cost_price
+            else:
+                if product_unit and product_unit.sale_price_usd is not None and usd_to_syp_old is not None and usd_to_syp_new is not None:
+                    default_unit_price = from_usd(
+                        product_unit.sale_price_usd,
+                        transaction_currency,
+                        usd_to_syp_old=usd_to_syp_old,
+                        usd_to_syp_new=usd_to_syp_new
+                    )
+                elif product.sale_price_usd is not None and usd_to_syp_old is not None and usd_to_syp_new is not None:
+                    default_unit_price = from_usd(
+                        product.sale_price_usd,
+                        transaction_currency,
+                        usd_to_syp_old=usd_to_syp_old,
+                        usd_to_syp_new=usd_to_syp_new
+                    )
+                elif product_unit and product_unit.sale_price:
+                    default_unit_price = product_unit.sale_price
+                else:
+                    default_unit_price = product.sale_price
+
+                if product_unit and product_unit.cost_price_usd is not None and usd_to_syp_old is not None and usd_to_syp_new is not None:
+                    default_cost_price = from_usd(
+                        product_unit.cost_price_usd,
+                        transaction_currency,
+                        usd_to_syp_old=usd_to_syp_old,
+                        usd_to_syp_new=usd_to_syp_new
+                    )
+                elif product.cost_price_usd is not None and usd_to_syp_old is not None and usd_to_syp_new is not None:
+                    default_cost_price = from_usd(
+                        product.cost_price_usd,
+                        transaction_currency,
+                        usd_to_syp_old=usd_to_syp_old,
+                        usd_to_syp_new=usd_to_syp_new
+                    )
+                elif product_unit and product_unit.cost_price:
+                    default_cost_price = product_unit.cost_price
+                else:
+                    default_cost_price = product.cost_price
             
             InvoiceItem.objects.create(
                 invoice=invoice,
                 product=product,
                 product_unit=product_unit,
                 quantity=item['quantity'],
-                unit_price=item.get('unit_price', product.sale_price),
-                cost_price=product.cost_price,
+                unit_price=item.get('unit_price', default_unit_price),
+                cost_price=item.get('cost_price', default_cost_price),
                 discount_percent=item.get('discount_percent', Decimal('0.00')),
                 tax_rate=item.get('tax_rate', product.tax_rate if product.is_taxable else Decimal('0.00')),
                 notes=item.get('notes'),
@@ -211,7 +310,7 @@ class SalesService:
             CreditLimitOverride.objects.create(
                 customer_id=customer_id,
                 invoice=invoice,
-                override_amount=invoice.total_amount - credit_validation_result.available_credit,
+                override_amount=invoice.total_amount_usd - credit_validation_result.available_credit,
                 reason=override_reason,
                 approved_by=user,
                 created_by=user
@@ -247,6 +346,32 @@ class SalesService:
         if invoice.status != Invoice.Status.DRAFT:
             raise InvalidOperationException(
                 f"لا يمكن تأكيد فاتورة بحالة {invoice.get_status_display()}"
+            )
+
+        invoice.calculate_totals()
+
+        needs_fx = invoice.transaction_currency != 'USD' or invoice.invoice_type == Invoice.InvoiceType.CREDIT
+        if needs_fx:
+            if invoice.usd_to_syp_old_snapshot is None and invoice.usd_to_syp_new_snapshot is None:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.fx_rate_date or invoice.invoice_date)
+                invoice.usd_to_syp_old_snapshot = usd_to_syp_old
+                invoice.usd_to_syp_new_snapshot = usd_to_syp_new
+            else:
+                invoice.usd_to_syp_old_snapshot, invoice.usd_to_syp_new_snapshot = normalize_fx(
+                    invoice.usd_to_syp_old_snapshot,
+                    invoice.usd_to_syp_new_snapshot
+                )
+            if not invoice.fx_rate_date:
+                invoice.fx_rate_date = invoice.invoice_date
+
+        if invoice.transaction_currency == 'USD':
+            invoice.total_amount_usd = invoice.total_amount
+        else:
+            invoice.total_amount_usd = to_usd(
+                invoice.total_amount,
+                invoice.transaction_currency,
+                usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                usd_to_syp_new=invoice.usd_to_syp_new_snapshot
             )
             
         # Deduct stock for all items
@@ -313,7 +438,11 @@ class SalesService:
                     invoice_id=invoice.id,
                     user=user,
                     notes='الدفع عند إنشاء الفاتورة',
-                    skip_invoice_update=True
+                    skip_invoice_update=True,
+                    transaction_currency=invoice.transaction_currency,
+                    fx_rate_date=invoice.fx_rate_date,
+                    usd_to_syp_old_snapshot=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new_snapshot=invoice.usd_to_syp_new_snapshot
                 )
         else:
             # Credit invoice
@@ -336,7 +465,11 @@ class SalesService:
                     invoice_id=invoice.id,
                     user=user,
                     notes='دفعة مقدمة عند إنشاء الفاتورة',
-                    skip_invoice_update=True
+                    skip_invoice_update=True,
+                    transaction_currency=invoice.transaction_currency,
+                    fx_rate_date=invoice.fx_rate_date,
+                    usd_to_syp_old_snapshot=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new_snapshot=invoice.usd_to_syp_new_snapshot
                 )
             else:
                 invoice.status = Invoice.Status.CONFIRMED
@@ -345,11 +478,53 @@ class SalesService:
             # Update customer balance for credit invoices
             # Requirements: 1.5
             customer = invoice.customer
-            customer.current_balance += (invoice.total_amount - invoice.paid_amount)
+            if invoice.transaction_currency == 'USD':
+                invoice.paid_amount_usd = invoice.paid_amount
+            else:
+                invoice.paid_amount_usd = to_usd(
+                    invoice.paid_amount,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
+
+            remaining_syp_old = invoice.remaining_amount
+            if invoice.transaction_currency == 'SYP_NEW':
+                remaining_syp_old = invoice.remaining_amount * Decimal('100')
+            elif invoice.transaction_currency == 'USD':
+                remaining_syp_old = from_usd(
+                    invoice.remaining_amount_usd,
+                    'SYP_OLD',
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
+
+            customer.current_balance += remaining_syp_old
+            customer.current_balance_usd += invoice.remaining_amount_usd
             customer.save()
         
-        # Explicitly save status and paid_amount
-        invoice.save(update_fields=['status', 'paid_amount'])
+        if invoice.transaction_currency == 'USD':
+            invoice.paid_amount_usd = invoice.paid_amount
+        else:
+            invoice.paid_amount_usd = to_usd(
+                invoice.paid_amount,
+                invoice.transaction_currency,
+                usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+            )
+
+        invoice.save(
+            update_fields=[
+                'status',
+                'paid_amount',
+                'transaction_currency',
+                'fx_rate_date',
+                'usd_to_syp_old_snapshot',
+                'usd_to_syp_new_snapshot',
+                'total_amount_usd',
+                'paid_amount_usd'
+            ]
+        )
         return invoice
 
     @staticmethod
@@ -361,6 +536,10 @@ class SalesService:
         amount: Decimal,
         payment_method: str,
         invoice_id: int = None,
+        transaction_currency: str = 'SYP_OLD',
+        fx_rate_date=None,
+        usd_to_syp_old_snapshot: Decimal = None,
+        usd_to_syp_new_snapshot: Decimal = None,
         allocations: Optional[List[Dict[str, Any]]] = None,
         auto_allocate: bool = False,
         reference: str = None,
@@ -397,13 +576,36 @@ class SalesService:
         Raises:
             ValidationException: If allocation amounts exceed payment or invoice remaining
         """
-        
+
+        if usd_to_syp_old_snapshot is None and usd_to_syp_new_snapshot is None:
+            if transaction_currency != 'USD' or (transaction_currency == 'USD' and not skip_invoice_update):
+                usd_to_syp_old_snapshot, usd_to_syp_new_snapshot = get_daily_fx(fx_rate_date or payment_date)
+        elif transaction_currency != 'USD' or (transaction_currency == 'USD' and not skip_invoice_update):
+            usd_to_syp_old_snapshot, usd_to_syp_new_snapshot = normalize_fx(
+                usd_to_syp_old_snapshot,
+                usd_to_syp_new_snapshot
+            )
+
+        amount_usd = amount
+        if transaction_currency != 'USD':
+            amount_usd = to_usd(
+                amount,
+                transaction_currency,
+                usd_to_syp_old=usd_to_syp_old_snapshot,
+                usd_to_syp_new=usd_to_syp_new_snapshot
+            )
+
         # Create payment record
         payment = Payment.objects.create(
             customer_id=customer_id,
             invoice_id=invoice_id if not allocations and not auto_allocate else None,
             payment_date=payment_date,
+            transaction_currency=transaction_currency,
+            fx_rate_date=fx_rate_date or payment_date,
+            usd_to_syp_old_snapshot=usd_to_syp_old_snapshot,
+            usd_to_syp_new_snapshot=usd_to_syp_new_snapshot,
             amount=amount,
+            amount_usd=amount_usd,
             payment_method=payment_method,
             reference=reference,
             notes=notes,
@@ -414,7 +616,20 @@ class SalesService:
         # Requirement 2.4: Update customer balance (skip if called from confirm_invoice for credit invoices)
         if not skip_invoice_update:
             customer = Customer.objects.select_for_update().get(id=customer_id)
-            customer.current_balance -= amount
+
+            amount_syp_old = amount
+            if transaction_currency == 'SYP_NEW':
+                amount_syp_old = amount * Decimal('100')
+            elif transaction_currency == 'USD':
+                amount_syp_old = from_usd(
+                    amount_usd,
+                    'SYP_OLD',
+                    usd_to_syp_old=payment.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=payment.usd_to_syp_new_snapshot
+                )
+
+            customer.current_balance -= amount_syp_old
+            customer.current_balance_usd -= amount_usd
             customer.save()
         
         # Handle allocations
@@ -428,35 +643,85 @@ class SalesService:
         elif invoice_id and not skip_invoice_update:
             # Legacy mode: allocate to single invoice
             invoice = Invoice.objects.select_for_update().get(id=invoice_id)
-            
-            # Calculate allocation amount (minimum of payment and remaining)
-            allocation_amount = min(amount, invoice.remaining_amount)
+
+            if invoice.total_amount_usd == 0 and invoice.transaction_currency != 'USD':
+                if not invoice.fx_rate_date:
+                    invoice.fx_rate_date = invoice.invoice_date
+                if not invoice.usd_to_syp_old_snapshot or not invoice.usd_to_syp_new_snapshot:
+                    usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.fx_rate_date)
+                    invoice.usd_to_syp_old_snapshot = usd_to_syp_old
+                    invoice.usd_to_syp_new_snapshot = usd_to_syp_new
+                invoice.total_amount_usd = to_usd(
+                    invoice.total_amount,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
+
+            if invoice.transaction_currency == 'USD' and invoice.total_amount_usd == 0:
+                invoice.total_amount_usd = invoice.total_amount
+
+            allocation_amount_usd = min(amount_usd, invoice.remaining_amount_usd)
+            allocation_amount = from_usd(
+                allocation_amount_usd,
+                invoice.transaction_currency,
+                usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+            )
             
             if allocation_amount > 0:
                 # Create allocation record
                 PaymentAllocation.objects.create(
                     payment=payment,
                     invoice=invoice,
-                    amount=allocation_amount
+                    amount=allocation_amount,
+                    amount_usd=allocation_amount_usd
                 )
                 
-                # Update invoice paid amount
-                invoice.paid_amount += allocation_amount
+                invoice.paid_amount_usd += allocation_amount_usd
+                invoice.paid_amount = from_usd(
+                    invoice.paid_amount_usd,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
                 
                 # Requirement 2.2, 2.3: Update invoice status
-                if invoice.paid_amount >= invoice.total_amount:
+                if invoice.paid_amount_usd >= invoice.total_amount_usd - Decimal('0.01'):
                     invoice.status = Invoice.Status.PAID
                 else:
                     invoice.status = Invoice.Status.PARTIAL
                 
-                invoice.save()
+                invoice.save(update_fields=['paid_amount', 'paid_amount_usd', 'status', 'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot', 'total_amount_usd'])
         elif invoice_id and skip_invoice_update:
             # Just create the allocation record without updating invoice
             invoice = Invoice.objects.get(id=invoice_id)
+            if invoice.transaction_currency != 'USD' and (not invoice.usd_to_syp_old_snapshot or not invoice.usd_to_syp_new_snapshot):
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.invoice_date)
+                invoice.fx_rate_date = invoice.invoice_date
+                invoice.usd_to_syp_old_snapshot = usd_to_syp_old
+                invoice.usd_to_syp_new_snapshot = usd_to_syp_new
+                invoice.total_amount_usd = to_usd(
+                    invoice.total_amount,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
+                invoice.save(update_fields=['fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot', 'total_amount_usd'])
+
+            alloc_usd = amount_usd
+            if invoice.transaction_currency != 'USD':
+                alloc_usd = to_usd(
+                    amount,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                )
             PaymentAllocation.objects.create(
                 payment=payment,
                 invoice=invoice,
-                amount=amount
+                amount=amount,
+                amount_usd=alloc_usd
             )
         
         return payment
@@ -586,6 +851,11 @@ class SalesService:
             Dict with customer info, opening_balance, closing_balance, totals, and transactions
         """
         
+        if start_date and isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if end_date and isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+
         customer = Customer.objects.get(id=customer_id)
         
         # Get ALL invoices (for opening balance calculation)
@@ -611,7 +881,10 @@ class SalesService:
                 'type': 'invoice',
                 'reference': inv.invoice_number,
                 'debit': inv.total_amount,
+                'debit_usd': inv.total_amount_usd,
                 'credit': Decimal('0.00'),
+                'credit_usd': Decimal('0.00'),
+                'transaction_currency': inv.transaction_currency,
                 'description': f'فاتورة رقم {inv.invoice_number}',
                 'sort_key': (inv.invoice_date, 0, inv.id)  # invoices first within same date
             })
@@ -622,7 +895,10 @@ class SalesService:
                 'type': 'payment',
                 'reference': payment.payment_number,
                 'debit': Decimal('0.00'),
+                'debit_usd': Decimal('0.00'),
                 'credit': payment.amount,
+                'credit_usd': payment.amount_usd,
+                'transaction_currency': payment.transaction_currency,
                 'description': f'سند قبض رقم {payment.payment_number}',
                 'sort_key': (payment.payment_date, 1, payment.id)  # payments after invoices
             })
@@ -633,7 +909,10 @@ class SalesService:
                 'type': 'return',
                 'reference': ret.return_number,
                 'debit': Decimal('0.00'),
+                'debit_usd': Decimal('0.00'),
                 'credit': ret.total_amount,
+                'credit_usd': ret.total_amount_usd,
+                'transaction_currency': ret.transaction_currency,
                 'description': f'مرتجع رقم {ret.return_number}',
                 'sort_key': (ret.return_date, 2, ret.id)  # returns after payments
             })
@@ -644,12 +923,14 @@ class SalesService:
         # Requirement 6.1, 6.2: Calculate opening balance
         # Opening balance = customer.opening_balance + all transactions before start_date
         opening_balance = customer.opening_balance
+        opening_balance_usd = customer.opening_balance_usd
         
         if start_date:
             # Add all transactions before start_date to opening balance
             for txn in all_transactions:
                 if txn['date'] < start_date:
                     opening_balance += txn['debit'] - txn['credit']
+                    opening_balance_usd += txn.get('debit_usd', Decimal('0.00')) - txn.get('credit_usd', Decimal('0.00'))
         
         # Filter transactions by date range for display
         filtered_transactions = []
@@ -667,17 +948,28 @@ class SalesService:
         # Calculate running balance for each transaction
         # Requirement 6.4: Running balance starts from opening_balance
         running_balance = opening_balance
+        running_balance_usd = opening_balance_usd
         total_debit = Decimal('0.00')
         total_credit = Decimal('0.00')
+        total_debit_usd = Decimal('0.00')
+        total_credit_usd = Decimal('0.00')
         
         for t in filtered_transactions:
             running_balance = running_balance + t['debit'] - t['credit']
             t['balance'] = running_balance
             total_debit += t['debit']
             total_credit += t['credit']
+
+            debit_usd = t.get('debit_usd', Decimal('0.00'))
+            credit_usd = t.get('credit_usd', Decimal('0.00'))
+            running_balance_usd = running_balance_usd + debit_usd - credit_usd
+            t['balance_usd'] = running_balance_usd
+            total_debit_usd += debit_usd
+            total_credit_usd += credit_usd
         
         # Requirement 6.3: Closing balance = opening_balance + total_debit - total_credit
         closing_balance = opening_balance + total_debit - total_credit
+        closing_balance_usd = opening_balance_usd + total_debit_usd - total_credit_usd
         
         return {
             'customer': {
@@ -690,12 +982,19 @@ class SalesService:
                 'end': end_date
             },
             'opening_balance': opening_balance,
+            'opening_balance_usd': opening_balance_usd,
             'closing_balance': closing_balance,
+            'closing_balance_usd': closing_balance_usd,
             'total_debit': total_debit,
+            'total_debit_usd': total_debit_usd,
             'total_credit': total_credit,
+            'total_credit_usd': total_credit_usd,
             'total_invoices': sum(t['debit'] for t in filtered_transactions),
+            'total_invoices_usd': sum(t.get('debit_usd', Decimal('0.00')) for t in filtered_transactions),
             'total_payments': sum(t['credit'] for t in filtered_transactions if t['type'] == 'payment'),
+            'total_payments_usd': sum(t.get('credit_usd', Decimal('0.00')) for t in filtered_transactions if t['type'] == 'payment'),
             'total_returns': sum(t['credit'] for t in filtered_transactions if t['type'] == 'return'),
+            'total_returns_usd': sum(t.get('credit_usd', Decimal('0.00')) for t in filtered_transactions if t['type'] == 'return'),
             'transactions': filtered_transactions
         }
 
@@ -707,6 +1006,14 @@ class SalesService:
         invoice = Invoice.objects.get(id=invoice_id)
         items = invoice.items.all()
 
+        usd_to_syp_old = invoice.usd_to_syp_old_snapshot
+        usd_to_syp_new = invoice.usd_to_syp_new_snapshot
+        if invoice.transaction_currency != 'USD' and (not usd_to_syp_old or not usd_to_syp_new):
+            try:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(invoice.fx_rate_date or invoice.invoice_date)
+            except Exception:
+                usd_to_syp_old, usd_to_syp_new = None, None
+
         returned = SalesReturnItem.objects.filter(
             invoice_item__invoice=invoice
         ).values('invoice_item_id').annotate(qty=Sum('quantity'))
@@ -714,6 +1021,8 @@ class SalesService:
 
         total_revenue = Decimal('0.00')
         total_cost = Decimal('0.00')
+        total_revenue_usd = Decimal('0.00')
+        total_cost_usd = Decimal('0.00')
 
         for item in items:
             returned_qty = returned_by_item.get(item.id, Decimal('0.00'))
@@ -730,8 +1039,37 @@ class SalesService:
             total_revenue += revenue
             total_cost += cost
 
+            if invoice.transaction_currency == 'USD':
+                revenue_usd = revenue
+            elif usd_to_syp_old and usd_to_syp_new:
+                revenue_usd = to_usd(
+                    revenue,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=usd_to_syp_old,
+                    usd_to_syp_new=usd_to_syp_new
+                )
+            else:
+                revenue_usd = revenue
+
+            total_revenue_usd += revenue_usd
+            if invoice.transaction_currency == 'USD':
+                cost_usd = cost
+            elif usd_to_syp_old and usd_to_syp_new:
+                cost_usd = to_usd(
+                    cost,
+                    invoice.transaction_currency,
+                    usd_to_syp_old=usd_to_syp_old,
+                    usd_to_syp_new=usd_to_syp_new
+                )
+            else:
+                cost_usd = cost
+
+            total_cost_usd += cost_usd
+
         gross_profit = total_revenue - total_cost
+        gross_profit_usd = total_revenue_usd - total_cost_usd
         profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else Decimal('0')
+        profit_margin_usd = (gross_profit_usd / total_revenue_usd * 100) if total_revenue_usd > 0 else Decimal('0')
         
         return {
             'invoice_number': invoice.invoice_number,
@@ -739,6 +1077,10 @@ class SalesService:
             'total_cost': total_cost,
             'gross_profit': gross_profit,
             'profit_margin': profit_margin,
+            'total_revenue_usd': total_revenue_usd,
+            'total_cost_usd': total_cost_usd,
+            'gross_profit_usd': gross_profit_usd,
+            'profit_margin_usd': profit_margin_usd,
             'items': [
                 {
                     'product': item.product.name,
@@ -839,10 +1181,45 @@ class SalesService:
         # We need to decrease it by the same amount
         if invoice.invoice_type == Invoice.InvoiceType.CREDIT:
             customer = invoice.customer
-            # The unpaid portion was added to customer balance
-            unpaid_amount = invoice.total_amount - invoice.paid_amount
-            customer.current_balance -= unpaid_amount
-            customer.save()
+            if invoice.total_amount_usd == 0 and invoice.total_amount:
+                if invoice.transaction_currency == 'USD':
+                    invoice.total_amount_usd = invoice.total_amount
+                elif invoice.usd_to_syp_old_snapshot and invoice.usd_to_syp_new_snapshot:
+                    invoice.total_amount_usd = to_usd(
+                        invoice.total_amount,
+                        invoice.transaction_currency,
+                        usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                    )
+
+            if invoice.paid_amount_usd == 0 and invoice.paid_amount:
+                if invoice.transaction_currency == 'USD':
+                    invoice.paid_amount_usd = invoice.paid_amount
+                elif invoice.usd_to_syp_old_snapshot and invoice.usd_to_syp_new_snapshot:
+                    invoice.paid_amount_usd = to_usd(
+                        invoice.paid_amount,
+                        invoice.transaction_currency,
+                        usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                    )
+
+            unpaid_amount_usd = invoice.remaining_amount_usd
+
+            unpaid_amount_syp_old = invoice.remaining_amount
+            if invoice.transaction_currency == 'SYP_NEW':
+                unpaid_amount_syp_old = invoice.remaining_amount * Decimal('100')
+            elif invoice.transaction_currency == 'USD':
+                if invoice.usd_to_syp_old_snapshot and invoice.usd_to_syp_new_snapshot:
+                    unpaid_amount_syp_old = from_usd(
+                        unpaid_amount_usd,
+                        'SYP_OLD',
+                        usd_to_syp_old=invoice.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=invoice.usd_to_syp_new_snapshot
+                    )
+
+            customer.current_balance -= unpaid_amount_syp_old
+            customer.current_balance_usd -= unpaid_amount_usd
+            customer.save(update_fields=['current_balance', 'current_balance_usd'])
         
         # Update invoice status to cancelled
         invoice.status = Invoice.Status.CANCELLED

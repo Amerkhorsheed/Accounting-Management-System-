@@ -22,9 +22,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.tables import DataTable
 from ...widgets.cards import Card
+from ...widgets.unit_selector import UnitSelectorComboBox
 from ...widgets.dialogs import MessageDialog, ConfirmDialog
 from ...services.api import api, ApiException
 from ...utils.error_handler import handle_ui_error
@@ -125,6 +126,8 @@ class PaymentsView(QWidget):
             {'key': 'customer_name', 'label': 'العميل', 'type': 'text'},
             {'key': 'payment_date', 'label': 'التاريخ', 'type': 'date'},
             {'key': 'amount', 'label': 'المبلغ', 'type': 'currency'},
+            {'key': 'amount_usd', 'label': 'المبلغ (عرض)', 'type': 'currency'},
+            {'key': 'transaction_currency', 'label': 'العملة', 'type': 'text'},
             {'key': 'payment_method_display', 'label': 'طريقة الدفع', 'type': 'text'},
         ]
         
@@ -292,6 +295,7 @@ class PaymentCreateDialog(QDialog):
         self.unpaid_invoices: List[Dict] = []
         self.selected_customer: Optional[Dict] = None
         self.allocations: Dict[int, Decimal] = {}  # invoice_id -> allocated amount
+        self._fx_syncing = False
         
         self.setWindowTitle("تسجيل دفعة جديدة")
         self.setMinimumWidth(900)
@@ -407,8 +411,41 @@ class PaymentCreateDialog(QDialog):
         self.payment_date = QDateEdit()
         self.payment_date.setCalendarPopup(True)
         self.payment_date.setDate(QDate.currentDate())
+        self.payment_date.dateChanged.connect(self.load_fx_for_date)
         date_row.addWidget(self.payment_date)
         right_layout.addLayout(date_row)
+
+        # Transaction currency
+        currency_row = QHBoxLayout()
+        currency_row.addWidget(QLabel("العملة:"))
+        self.currency_combo = QComboBox()
+        self.currency_combo.addItem("USD", "USD")
+        self.currency_combo.addItem("الليرة القديمة", "SYP_OLD")
+        self.currency_combo.addItem("الليرة الجديدة", "SYP_NEW")
+        self.currency_combo.currentIndexChanged.connect(self.on_currency_changed)
+        currency_row.addWidget(self.currency_combo)
+        right_layout.addLayout(currency_row)
+
+        # FX snapshot (only relevant for non-USD)
+        fx_row = QHBoxLayout()
+        fx_row.setSpacing(6)
+        fx_row.addWidget(QLabel("FX:"))
+        self.usd_to_syp_new_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_new_snapshot.setRange(0, 999999999999)
+        self.usd_to_syp_new_snapshot.setDecimals(6)
+        self.usd_to_syp_new_snapshot.setPrefix("1$=")
+        self.usd_to_syp_new_snapshot.setSuffix(" جديد")
+        self.usd_to_syp_new_snapshot.valueChanged.connect(self.on_fx_new_changed)
+        fx_row.addWidget(self.usd_to_syp_new_snapshot, 1)
+
+        self.usd_to_syp_old_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_old_snapshot.setRange(0, 99999999999999)
+        self.usd_to_syp_old_snapshot.setDecimals(6)
+        self.usd_to_syp_old_snapshot.setPrefix("1$=")
+        self.usd_to_syp_old_snapshot.setSuffix(" قديم")
+        self.usd_to_syp_old_snapshot.valueChanged.connect(self.on_fx_old_changed)
+        fx_row.addWidget(self.usd_to_syp_old_snapshot, 1)
+        right_layout.addLayout(fx_row)
         
         # Payment amount
         amount_row = QHBoxLayout()
@@ -416,7 +453,7 @@ class PaymentCreateDialog(QDialog):
         self.payment_amount = QDoubleSpinBox()
         self.payment_amount.setMaximum(999999999)
         self.payment_amount.setDecimals(2)
-        self.payment_amount.setSuffix(" ل.س")
+        self.payment_amount.setSuffix("")
         self.payment_amount.valueChanged.connect(self.on_payment_amount_changed)
         amount_row.addWidget(self.payment_amount)
         right_layout.addLayout(amount_row)
@@ -462,17 +499,17 @@ class PaymentCreateDialog(QDialog):
         
         summary_layout = QGridLayout()
         summary_layout.addWidget(QLabel("إجمالي المحدد:"), 0, 0)
-        self.selected_total_label = QLabel("0.00 ل.س")
+        self.selected_total_label = QLabel(config.format_usd(0))
         self.selected_total_label.setStyleSheet("font-weight: bold;")
         summary_layout.addWidget(self.selected_total_label, 0, 1)
         
         summary_layout.addWidget(QLabel("مبلغ الدفع:"), 1, 0)
-        self.payment_total_label = QLabel("0.00 ل.س")
+        self.payment_total_label = QLabel(config.format_usd(0))
         self.payment_total_label.setStyleSheet(f"font-weight: bold; color: {Colors.PRIMARY};")
         summary_layout.addWidget(self.payment_total_label, 1, 1)
         
         summary_layout.addWidget(QLabel("الفرق:"), 2, 0)
-        self.difference_label = QLabel("0.00 ل.س")
+        self.difference_label = QLabel(config.format_usd(0))
         summary_layout.addWidget(self.difference_label, 2, 1)
         
         right_layout.addLayout(summary_layout)
@@ -509,6 +546,8 @@ class PaymentCreateDialog(QDialog):
         splitter.setSizes([500, 400])
         
         layout.addWidget(splitter, 1)
+
+        self.on_currency_changed(self.currency_combo.currentIndex())
     
     def _create_separator(self) -> QFrame:
         """Create a horizontal separator line."""
@@ -532,8 +571,8 @@ class PaymentCreateDialog(QDialog):
         self.customer_combo.addItem("-- اختر العميل --", None)
         
         for customer in self.customers_cache:
-            balance = float(customer.get('current_balance', 0))
-            display_text = f"{customer.get('name', '')} - رصيد: {balance:,.2f} ل.س"
+            balance_usd = float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0)
+            display_text = f"{customer.get('name', '')} - رصيد: {config.format_usd(balance_usd)}"
             self.customer_combo.addItem(display_text, customer)
     
     @handle_ui_error
@@ -554,11 +593,12 @@ class PaymentCreateDialog(QDialog):
     
     def _update_customer_display(self, customer: Dict):
         """Update the customer balance display."""
-        balance = float(customer.get('current_balance', 0))
-        self.current_balance_label.setText(f"{balance:,.2f} ل.س")
+        balance_usd = float(customer.get('current_balance_usd', 0) or 0)
+        balance_tx = self._usd_to_transaction_amount(balance_usd)
+        self.current_balance_label.setText(self._format_amount(balance_tx))
         
         # Color code the balance
-        if balance > 0:
+        if balance_usd > 0:
             self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.DANGER};")
         else:
             self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.SUCCESS};")
@@ -612,30 +652,80 @@ class PaymentCreateDialog(QDialog):
             ))
             
             # Total amount
-            total = float(invoice.get('total_amount', 0))
+            total_usd = float(invoice.get('total_amount_usd', invoice.get('total_amount', 0)) or 0)
+            total = self._usd_to_transaction_amount(total_usd)
             self.invoices_table.setItem(row, 3, QTableWidgetItem(f"{total:,.2f}"))
             
             # Remaining amount
-            remaining = float(invoice.get('remaining_amount', 0))
+            remaining_usd = float(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', 0)) or 0)
+            remaining = self._usd_to_transaction_amount(remaining_usd)
             remaining_item = QTableWidgetItem(f"{remaining:,.2f}")
             remaining_item.setForeground(QColor(Colors.DANGER))
             self.invoices_table.setItem(row, 4, remaining_item)
             
             # Allocated amount (initially 0)
             allocated_item = QTableWidgetItem("0.00")
+            if self.auto_allocate_check.isChecked():
+                allocated_item.setFlags(allocated_item.flags() & ~Qt.ItemIsEditable)
             self.invoices_table.setItem(row, 5, allocated_item)
         
         self.invoices_table.blockSignals(False)
     
     def on_invoice_selection_changed(self, item: QTableWidgetItem):
         """Handle invoice checkbox state change."""
-        if item.column() != 0:
+        if item is None:
             return
-        
+
+        if item.column() == 0:
+            self._update_selected_total()
+            if self.auto_allocate_check.isChecked():
+                self._auto_allocate()
+            self._update_allocation_display()
+            self._update_summary()
+            return
+
+        if item.column() != 5 or self.auto_allocate_check.isChecked():
+            return
+
+        row = item.row()
+        if not (0 <= row < len(self.unpaid_invoices)):
+            return
+
+        invoice = self.unpaid_invoices[row]
+        invoice_id = invoice.get('id')
+        if not invoice_id:
+            return
+
+        try:
+            entered_tx = float(str(item.text()).replace(',', '').strip() or 0)
+        except Exception:
+            entered_tx = 0.0
+
+        if entered_tx < 0:
+            entered_tx = 0.0
+
+        entered_usd = self._transaction_to_usd(entered_tx)
+        remaining_usd = Decimal(str(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', 0)) or 0))
+
+        if entered_usd > remaining_usd:
+            entered_usd = remaining_usd
+
+        checkbox_item = self.invoices_table.item(row, 0)
+        if checkbox_item and entered_usd > 0 and checkbox_item.checkState() != Qt.Checked:
+            self.invoices_table.blockSignals(True)
+            checkbox_item.setCheckState(Qt.Checked)
+            self.invoices_table.blockSignals(False)
+
+        if entered_usd <= 0:
+            self.allocations.pop(int(invoice_id), None)
+        else:
+            self.allocations[int(invoice_id)] = entered_usd
+
+        self.invoices_table.blockSignals(True)
+        item.setText(f"{self._usd_to_transaction_amount(float(entered_usd)):,.2f}")
+        self.invoices_table.blockSignals(False)
+
         self._update_selected_total()
-        if self.auto_allocate_check.isChecked():
-            self._auto_allocate()
-        self._update_allocation_display()
         self._update_summary()
     
     def select_all_invoices(self):
@@ -680,12 +770,12 @@ class PaymentCreateDialog(QDialog):
     def _update_selected_total(self):
         """Update the selected invoices total display."""
         selected = self._get_selected_invoices()
-        total = sum(float(inv.get('remaining_amount', 0)) for inv in selected)
-        self.selected_total_label.setText(f"{total:,.2f} ل.س")
+        total_usd = sum(float(inv.get('remaining_amount_usd', inv.get('remaining_amount', 0)) or 0) for inv in selected)
+        self.selected_total_label.setText(self._format_amount_usd(total_usd))
     
     def on_payment_amount_changed(self, value: float):
         """Handle payment amount change."""
-        self.payment_total_label.setText(f"{value:,.2f} ل.س")
+        self.payment_total_label.setText(self._format_amount(float(value or 0)))
         
         if self.auto_allocate_check.isChecked():
             self._auto_allocate()
@@ -698,6 +788,20 @@ class PaymentCreateDialog(QDialog):
             self._auto_allocate()
         else:
             self.allocations = {}
+
+        self.invoices_table.blockSignals(True)
+        try:
+            editable = state != Qt.Checked
+            for row in range(self.invoices_table.rowCount()):
+                cell = self.invoices_table.item(row, 5)
+                if cell is None:
+                    continue
+                if editable:
+                    cell.setFlags(cell.flags() | Qt.ItemIsEditable)
+                else:
+                    cell.setFlags(cell.flags() & ~Qt.ItemIsEditable)
+        finally:
+            self.invoices_table.blockSignals(False)
         self._update_allocation_display()
         self._update_summary()
     
@@ -708,23 +812,23 @@ class PaymentCreateDialog(QDialog):
         Requirements: 13.4 - Support multiple invoice allocation
         """
         self.allocations = {}
-        payment_amount = Decimal(str(self.payment_amount.value()))
+        payment_amount_usd = self._transaction_to_usd(self.payment_amount.value())
         
-        if payment_amount <= 0:
+        if payment_amount_usd <= 0:
             return
         
         # Get selected invoices sorted by date (oldest first - FIFO)
         selected = self._get_selected_invoices()
         selected_sorted = sorted(selected, key=lambda x: x.get('invoice_date', ''))
         
-        remaining_payment = payment_amount
+        remaining_payment = payment_amount_usd
         
         for invoice in selected_sorted:
             if remaining_payment <= 0:
                 break
             
             invoice_id = invoice.get('id')
-            invoice_remaining = Decimal(str(invoice.get('remaining_amount', 0)))
+            invoice_remaining = Decimal(str(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', 0)) or 0))
             
             # Allocate the minimum of remaining payment and invoice remaining
             allocation = min(remaining_payment, invoice_remaining)
@@ -740,7 +844,8 @@ class PaymentCreateDialog(QDialog):
         for row in range(self.invoices_table.rowCount()):
             if row < len(self.unpaid_invoices):
                 invoice_id = self.unpaid_invoices[row].get('id')
-                allocated = float(self.allocations.get(invoice_id, 0))
+                allocated_usd = float(self.allocations.get(invoice_id, 0) or 0)
+                allocated = self._usd_to_transaction_amount(allocated_usd)
                 
                 allocated_item = self.invoices_table.item(row, 5)
                 if allocated_item:
@@ -754,16 +859,17 @@ class PaymentCreateDialog(QDialog):
     
     def _update_summary(self):
         """Update the summary section."""
-        payment = self.payment_amount.value()
+        payment_tx = float(self.payment_amount.value() or 0)
+        payment_usd = float(self._transaction_to_usd(payment_tx))
         selected = self._get_selected_invoices()
-        selected_total = sum(float(inv.get('remaining_amount', 0)) for inv in selected)
+        selected_total_usd = sum(float(inv.get('remaining_amount_usd', inv.get('remaining_amount', 0)) or 0) for inv in selected)
         
-        difference = payment - selected_total
-        self.difference_label.setText(f"{difference:,.2f} ل.س")
+        difference_usd = payment_usd - selected_total_usd
+        self.difference_label.setText(self._format_amount_usd(difference_usd))
         
-        if difference < 0:
+        if difference_usd < 0:
             self.difference_label.setStyleSheet(f"color: {Colors.WARNING};")
-        elif difference > 0:
+        elif difference_usd > 0:
             self.difference_label.setStyleSheet(f"color: {Colors.INFO};")
         else:
             self.difference_label.setStyleSheet(f"color: {Colors.SUCCESS};")
@@ -782,6 +888,15 @@ class PaymentCreateDialog(QDialog):
             self.error_label.setText("يرجى إدخال مبلغ الدفع")
             self.error_label.setVisible(True)
             return False
+
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency != 'USD':
+            fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+            fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+            if fx_old <= 0 or fx_new <= 0:
+                self.error_label.setText("يرجى إدخال سعر الصرف")
+                self.error_label.setVisible(True)
+                return False
         
         return True
     
@@ -793,18 +908,26 @@ class PaymentCreateDialog(QDialog):
         
         # Build allocations list
         allocations_list = []
-        for invoice_id, amount in self.allocations.items():
-            if amount > 0:
+        for invoice_id, amount_usd in self.allocations.items():
+            if amount_usd and amount_usd > 0:
                 allocations_list.append({
                     'invoice_id': invoice_id,
-                    'amount': str(amount)
+                    'amount_usd': str(amount_usd)
                 })
         
         # Build payment data
+        tx_currency = self.currency_combo.currentData() or 'USD'
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+        fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+        payment_date = self.payment_date.date().toString('yyyy-MM-dd')
         payment_data = {
             'customer': self.selected_customer.get('id'),
-            'payment_date': self.payment_date.date().toString('yyyy-MM-dd'),
+            'payment_date': payment_date,
             'amount': str(self.payment_amount.value()),
+            'transaction_currency': tx_currency,
+            'fx_rate_date': payment_date,
+            'usd_to_syp_old_snapshot': fx_old if fx_old > 0 else None,
+            'usd_to_syp_new_snapshot': fx_new if fx_new > 0 else None,
             'payment_method': self.payment_method.currentData(),
             'reference': self.reference_input.text().strip() or None,
             'notes': self.notes_input.toPlainText().strip() or None,
@@ -818,6 +941,101 @@ class PaymentCreateDialog(QDialog):
         # Emit signal and close
         self.saved.emit(result)
         self.accept()
+
+    def _format_amount(self, amount: float) -> str:
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency == 'USD':
+            return f"${float(amount or 0):,.2f}"
+        if currency == 'SYP_NEW':
+            return f"{float(amount or 0):,.2f} ل.س جديدة"
+        return f"{float(amount or 0):,.2f} ل.س"
+
+    def _format_amount_usd(self, amount_usd: float) -> str:
+        tx_amount = self._usd_to_transaction_amount(float(amount_usd or 0))
+        return self._format_amount(tx_amount)
+
+    def _usd_to_transaction_amount(self, amount_usd: float) -> float:
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency == 'USD':
+            return float(amount_usd or 0)
+        if currency == 'SYP_NEW':
+            rate = float(self.usd_to_syp_new_snapshot.value() or 0)
+            return float(amount_usd or 0) * rate if rate > 0 else 0.0
+        if currency == 'SYP_OLD':
+            rate = float(self.usd_to_syp_old_snapshot.value() or 0)
+            return float(amount_usd or 0) * rate if rate > 0 else 0.0
+        return float(amount_usd or 0)
+
+    def _transaction_to_usd(self, amount: float) -> Decimal:
+        currency = self.currency_combo.currentData() or 'USD'
+        amount_dec = Decimal(str(amount or 0))
+        if currency == 'USD':
+            return amount_dec
+        if currency == 'SYP_NEW':
+            rate = Decimal(str(self.usd_to_syp_new_snapshot.value() or 0))
+            return (amount_dec / rate) if rate > 0 else Decimal('0')
+        if currency == 'SYP_OLD':
+            rate = Decimal(str(self.usd_to_syp_old_snapshot.value() or 0))
+            return (amount_dec / rate) if rate > 0 else Decimal('0')
+        return amount_dec
+
+    def on_currency_changed(self, index: int):
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency == 'USD':
+            self.payment_amount.setSuffix(" $")
+            self.usd_to_syp_new_snapshot.setEnabled(False)
+            self.usd_to_syp_old_snapshot.setEnabled(False)
+        elif currency == 'SYP_NEW':
+            self.payment_amount.setSuffix(" ل.س جديدة")
+            self.usd_to_syp_new_snapshot.setEnabled(True)
+            self.usd_to_syp_old_snapshot.setEnabled(True)
+        else:
+            self.payment_amount.setSuffix(" ل.س")
+            self.usd_to_syp_new_snapshot.setEnabled(True)
+            self.usd_to_syp_old_snapshot.setEnabled(True)
+
+        self.load_fx_for_date()
+        self.on_payment_amount_changed(self.payment_amount.value())
+        if self.selected_customer:
+            self._update_customer_display(self.selected_customer)
+        self._update_selected_total()
+        self._update_allocation_display()
+        self._update_summary()
+
+    def on_fx_new_changed(self, value: float):
+        if self._fx_syncing:
+            return
+        self._fx_syncing = True
+        try:
+            self.usd_to_syp_old_snapshot.setValue(value * 100.0)
+        finally:
+            self._fx_syncing = False
+
+    def on_fx_old_changed(self, value: float):
+        if self._fx_syncing:
+            return
+        self._fx_syncing = True
+        try:
+            self.usd_to_syp_new_snapshot.setValue(value / 100.0 if value else 0.0)
+        finally:
+            self._fx_syncing = False
+
+    def load_fx_for_date(self, qdate=None):
+        if (self.currency_combo.currentData() or 'USD') == 'USD':
+            return
+        try:
+            rate_date = self.payment_date.date().toString('yyyy-MM-dd')
+            ctx = api.get_app_context(rate_date=rate_date, strict_fx=False)
+            fx = ctx.get('daily_fx') if isinstance(ctx, dict) else None
+            if fx:
+                self._fx_syncing = True
+                try:
+                    self.usd_to_syp_old_snapshot.setValue(float(fx.get('usd_to_syp_old') or 0))
+                    self.usd_to_syp_new_snapshot.setValue(float(fx.get('usd_to_syp_new') or 0))
+                finally:
+                    self._fx_syncing = False
+        except ApiException:
+            pass
 
 
 
@@ -870,10 +1088,17 @@ class PaymentDetailsDialog(QDialog):
         
         # Row 2: Amount
         info_layout.addWidget(QLabel("المبلغ:"), 2, 0)
-        amount = float(self.payment.get('amount', 0))
-        amount_label = QLabel(f"{amount:,.2f} ل.س")
+        amount = float(self.payment.get('amount', 0) or 0)
+        amount_usd = float(self.payment.get('amount_usd', 0) or 0)
+        currency = self.payment.get('transaction_currency') or 'USD'
+        amount_label = QLabel(self._format_amount_by_currency(amount, currency))
         amount_label.setStyleSheet(f"font-weight: bold; color: {Colors.SUCCESS}; font-size: 16px;")
         info_layout.addWidget(amount_label, 2, 1)
+
+        info_layout.addWidget(QLabel("عرض:"), 2, 2)
+        amount_usd_label = QLabel(config.format_usd(amount_usd))
+        amount_usd_label.setStyleSheet(f"font-weight: bold; color: {Colors.PRIMARY};")
+        info_layout.addWidget(amount_usd_label, 2, 3)
         
         # Row 3: Payment method
         info_layout.addWidget(QLabel("طريقة الدفع:"), 3, 0)
@@ -912,9 +1137,9 @@ class PaymentDetailsDialog(QDialog):
             
             # Allocations table
             allocations_table = QTableWidget()
-            allocations_table.setColumnCount(4)
+            allocations_table.setColumnCount(5)
             allocations_table.setHorizontalHeaderLabels([
-                'رقم الفاتورة', 'تاريخ الفاتورة', 'إجمالي الفاتورة', 'المبلغ المخصص'
+                'رقم الفاتورة', 'تاريخ الفاتورة', 'إجمالي الفاتورة', 'المبلغ المخصص', 'عرض'
             ])
             allocations_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             allocations_table.verticalHeader().setVisible(False)
@@ -938,14 +1163,20 @@ class PaymentDetailsDialog(QDialog):
                 ))
                 
                 # Invoice total
-                invoice_total = float(invoice.get('total_amount', allocation.get('invoice_total', 0)))
-                allocations_table.setItem(row, 2, QTableWidgetItem(f"{invoice_total:,.2f}"))
+                invoice_total_usd = float(allocation.get('invoice_total_usd', 0) or 0)
+                allocations_table.setItem(row, 2, QTableWidgetItem(config.format_usd(invoice_total_usd)))
                 
                 # Allocated amount
-                allocated = float(allocation.get('amount', 0))
-                allocated_item = QTableWidgetItem(f"{allocated:,.2f}")
+                inv_currency = allocation.get('invoice_transaction_currency') or currency
+                allocated = float(allocation.get('amount', 0) or 0)
+                allocated_item = QTableWidgetItem(self._format_amount_by_currency(allocated, inv_currency))
                 allocated_item.setForeground(QColor(Colors.SUCCESS))
                 allocations_table.setItem(row, 3, allocated_item)
+
+                allocated_usd = float(allocation.get('amount_usd', 0) or 0)
+                allocated_usd_item = QTableWidgetItem(config.format_usd(allocated_usd))
+                allocated_usd_item.setForeground(QColor(Colors.PRIMARY))
+                allocations_table.setItem(row, 4, allocated_usd_item)
             
             allocations_layout.addWidget(allocations_table)
             layout.addWidget(allocations_group)
@@ -965,16 +1196,22 @@ class PaymentDetailsDialog(QDialog):
                 no_alloc_label.setStyleSheet(f"color: {Colors.LIGHT_TEXT}; font-style: italic;")
                 no_alloc_label.setAlignment(Qt.AlignCenter)
                 layout.addWidget(no_alloc_label)
-        
+
         layout.addStretch()
-        
-        # Close button
+
         buttons_layout = QHBoxLayout()
         buttons_layout.addStretch()
-        
+
         close_btn = QPushButton("إغلاق")
         close_btn.setProperty("class", "secondary")
         close_btn.clicked.connect(self.accept)
         buttons_layout.addWidget(close_btn)
-        
+
         layout.addLayout(buttons_layout)
+
+    def _format_amount_by_currency(self, amount: float, currency: str) -> str:
+        if currency == 'USD':
+            return f"${float(amount or 0):,.2f}"
+        if currency == 'SYP_NEW':
+            return f"{float(amount or 0):,.2f} ل.س جديدة"
+        return f"{float(amount or 0):,.2f} ل.س"

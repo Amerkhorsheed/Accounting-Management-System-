@@ -238,9 +238,10 @@ LOGGING = {
             'level': 'DEBUG',
         },
         # Requirement 7.4: Write to Django log file with rotation
+        # Using WindowsSafeRotatingFileHandler to avoid file locking issues on Windows
         # Main application log file with rotation (10MB max, keep 5 backups)
         'file': {
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'config.logging_handlers.WindowsSafeRotatingFileHandler',
             'filename': LOGS_DIR / 'django.log',
             'formatter': 'verbose',
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
@@ -250,7 +251,7 @@ LOGGING = {
         },
         # Error-specific log file with rotation
         'error_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'config.logging_handlers.WindowsSafeRotatingFileHandler',
             'filename': LOGS_DIR / 'errors.log',
             'formatter': 'error',
             'maxBytes': 10 * 1024 * 1024,  # 10 MB
@@ -260,7 +261,7 @@ LOGGING = {
         },
         # Debug log file for detailed debugging (only in DEBUG mode)
         'debug_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'config.logging_handlers.WindowsSafeRotatingFileHandler',
             'filename': LOGS_DIR / 'debug.log',
             'formatter': 'verbose',
             'maxBytes': 20 * 1024 * 1024,  # 20 MB
@@ -271,7 +272,7 @@ LOGGING = {
         },
         # Structured JSON log for potential log aggregation
         'structured_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'config.logging_handlers.WindowsSafeRotatingFileHandler',
             'filename': LOGS_DIR / 'structured.log',
             'formatter': 'structured',
             'maxBytes': 10 * 1024 * 1024,  # 10 MB

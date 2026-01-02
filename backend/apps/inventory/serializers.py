@@ -120,7 +120,7 @@ class ProductUnitSerializer(serializers.ModelSerializer):
             'id', 'product', 'product_name', 'product_code',
             'unit', 'unit_id', 'unit_name', 'unit_name_en', 'unit_symbol',
             'conversion_factor', 'is_base_unit',
-            'sale_price', 'cost_price', 'barcode',
+            'sale_price', 'sale_price_usd', 'cost_price', 'cost_price_usd', 'barcode',
             'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -133,7 +133,7 @@ class ProductUnitCreateSerializer(serializers.ModelSerializer):
         model = ProductUnit
         fields = [
             'id', 'product', 'unit', 'conversion_factor', 'is_base_unit',
-            'sale_price', 'cost_price', 'barcode', 'is_active'
+            'sale_price', 'sale_price_usd', 'cost_price', 'cost_price_usd', 'barcode', 'is_active'
         ]
         read_only_fields = ['id']
         extra_kwargs = {
@@ -142,7 +142,9 @@ class ProductUnitCreateSerializer(serializers.ModelSerializer):
             'conversion_factor': {'required': False},
             'is_base_unit': {'required': False},
             'sale_price': {'required': False},
+            'sale_price_usd': {'required': False, 'allow_null': True},
             'cost_price': {'required': False},
+            'cost_price_usd': {'required': False, 'allow_null': True},
             'barcode': {'required': False, 'allow_blank': True, 'allow_null': True},
             'is_active': {'required': False, 'default': True},
         }
@@ -159,10 +161,22 @@ class ProductUnitCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('سعر البيع لا يمكن أن يكون سالباً')
         return value
 
+    def validate_sale_price_usd(self, value):
+        """Validate USD sale price is not negative."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError('سعر البيع (USD) لا يمكن أن يكون سالباً')
+        return value
+
     def validate_cost_price(self, value):
         """Validate cost price is not negative."""
         if value is not None and value < 0:
             raise serializers.ValidationError('سعر التكلفة لا يمكن أن يكون سالباً')
+        return value
+
+    def validate_cost_price_usd(self, value):
+        """Validate USD cost price is not negative."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError('سعر التكلفة (USD) لا يمكن أن يكون سالباً')
         return value
 
     def validate(self, attrs):
@@ -272,7 +286,8 @@ class ProductListSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'code', 'barcode', 'name', 'name_en', 'category', 'category_name',
-            'unit', 'unit_name', 'unit_symbol', 'cost_price', 'sale_price', 
+            'unit', 'unit_name', 'unit_symbol',
+            'cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd',
             'is_active', 'total_stock', 'image', 'minimum_stock', 'track_stock',
             'is_taxable', 'tax_rate', 'product_units', 'stock_conversions', 
             'base_unit_info', 'is_low_stock'
@@ -358,7 +373,9 @@ class ProductListSerializer(serializers.ModelSerializer):
                 'conversion_factor': str(pu.conversion_factor),
                 'is_base_unit': pu.is_base_unit,
                 'sale_price': str(pu.sale_price),
+                'sale_price_usd': str(pu.sale_price_usd) if pu.sale_price_usd is not None else None,
                 'cost_price': str(pu.cost_price),
+                'cost_price_usd': str(pu.cost_price_usd) if pu.cost_price_usd is not None else None,
                 'barcode': pu.barcode
             }
             for pu in product_units
@@ -384,7 +401,10 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'code', 'barcode', 'name', 'name_en', 'description',
             'product_type', 'category', 'category_name', 'unit', 'unit_name', 'unit_symbol',
-            'cost_price', 'sale_price', 'wholesale_price', 'minimum_price',
+            'cost_price', 'cost_price_usd',
+            'sale_price', 'sale_price_usd',
+            'wholesale_price', 'wholesale_price_usd',
+            'minimum_price', 'minimum_price_usd',
             'is_taxable', 'tax_rate', 'price_with_tax', 'profit_margin',
             'track_stock', 'minimum_stock', 'maximum_stock', 'reorder_point',
             'image', 'brand', 'model', 'notes',
@@ -496,7 +516,10 @@ class ProductCreateSerializer(serializers.ModelSerializer):
         fields = [
             'code', 'barcode', 'name', 'name_en', 'description',
             'product_type', 'category', 'unit',
-            'cost_price', 'sale_price', 'wholesale_price', 'minimum_price',
+            'cost_price', 'cost_price_usd',
+            'sale_price', 'sale_price_usd',
+            'wholesale_price', 'wholesale_price_usd',
+            'minimum_price', 'minimum_price_usd',
             'is_taxable', 'tax_rate',
             'track_stock', 'minimum_stock', 'maximum_stock', 'reorder_point',
             'image', 'brand', 'model', 'notes', 'is_active'
@@ -508,9 +531,13 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             'description': {'required': False, 'allow_blank': True},
             'product_type': {'required': False},
             'cost_price': {'required': False},
+            'cost_price_usd': {'required': False, 'allow_null': True},
             'sale_price': {'required': False},
+            'sale_price_usd': {'required': False, 'allow_null': True},
             'wholesale_price': {'required': False},
+            'wholesale_price_usd': {'required': False, 'allow_null': True},
             'minimum_price': {'required': False},
+            'minimum_price_usd': {'required': False, 'allow_null': True},
             'is_taxable': {'required': False},
             'tax_rate': {'required': False},
             'track_stock': {'required': False},
@@ -555,10 +582,22 @@ class ProductCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('سعر البيع لا يمكن أن يكون سالباً')
         return value
 
+    def validate_sale_price_usd(self, value):
+        """Ensure USD sale price is not negative."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError('سعر البيع (USD) لا يمكن أن يكون سالباً')
+        return value
+
     def validate_cost_price(self, value):
         """Ensure cost price is not negative."""
         if value is not None and value < 0:
             raise serializers.ValidationError('سعر التكلفة لا يمكن أن يكون سالباً')
+        return value
+
+    def validate_cost_price_usd(self, value):
+        """Ensure USD cost price is not negative."""
+        if value is not None and value < 0:
+            raise serializers.ValidationError('سعر التكلفة (USD) لا يمكن أن يكون سالباً')
         return value
 
     def validate(self, attrs):
@@ -578,13 +617,22 @@ class ProductCreateSerializer(serializers.ModelSerializer):
                         'unit': 'يجب تحديد وحدة القياس أو إنشاء وحدة افتراضية'
                     })
         
-        # Validate minimum_price <= sale_price if both are set
+        # Validate minimum_price <= sale_price (SYP) if both are set
         sale_price = attrs.get('sale_price')
         minimum_price = attrs.get('minimum_price')
         if sale_price is not None and minimum_price is not None:
             if minimum_price > sale_price:
                 raise serializers.ValidationError({
                     'minimum_price': 'أقل سعر بيع لا يمكن أن يكون أكبر من سعر البيع'
+                })
+
+        # Validate minimum_price_usd <= sale_price_usd (USD) if both are set
+        sale_price_usd = attrs.get('sale_price_usd')
+        minimum_price_usd = attrs.get('minimum_price_usd')
+        if sale_price_usd is not None and minimum_price_usd is not None:
+            if minimum_price_usd > sale_price_usd:
+                raise serializers.ValidationError({
+                    'minimum_price_usd': 'أقل سعر بيع (USD) لا يمكن أن يكون أكبر من سعر البيع (USD)'
                 })
         
         return attrs

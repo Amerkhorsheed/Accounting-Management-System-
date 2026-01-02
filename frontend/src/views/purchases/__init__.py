@@ -47,7 +47,8 @@ class SuppliersView(QWidget):
             {'key': 'name', 'label': 'اسم المورد'},
             {'key': 'phone', 'label': 'الهاتف'},
             {'key': 'mobile', 'label': 'الجوال'},
-            {'key': 'current_balance', 'label': 'الرصيد', 'type': 'currency'},
+            {'key': 'current_balance_display', 'label': 'الرصيد (ل.س)'},
+            {'key': 'current_balance_usd_display', 'label': 'الرصيد (USD)'},
         ]
         
         self.table = DataTable(columns)
@@ -64,6 +65,15 @@ class SuppliersView(QWidget):
             suppliers = response['results']
         else:
             suppliers = response if isinstance(response, list) else []
+        for s in suppliers:
+            try:
+                s['current_balance_display'] = f"{float(s.get('current_balance', 0)):,.2f} ل.س"
+            except (ValueError, TypeError):
+                s['current_balance_display'] = str(s.get('current_balance', ''))
+            try:
+                s['current_balance_usd_display'] = f"{float(s.get('current_balance_usd', 0)):,.2f} $"
+            except (ValueError, TypeError):
+                s['current_balance_usd_display'] = str(s.get('current_balance_usd', ''))
         self.table.set_data(suppliers)
         
     def add_supplier(self):
@@ -246,7 +256,7 @@ class PurchaseOrdersView(QWidget):
             {'key': 'order_number', 'label': 'رقم الأمر'},
             {'key': 'supplier_name', 'label': 'المورد'},
             {'key': 'order_date', 'label': 'التاريخ', 'type': 'date'},
-            {'key': 'total_amount', 'label': 'المبلغ', 'type': 'currency'},
+            {'key': 'total_amount_display', 'label': 'المبلغ (USD)'},
             {'key': 'status_display', 'label': 'الحالة'},
         ]
         
@@ -333,6 +343,12 @@ class PurchaseOrdersView(QWidget):
             orders = response['results']
         else:
             orders = response if isinstance(response, list) else []
+        for o in orders:
+            try:
+                amount = float(o.get('total_amount_usd', 0) or 0)
+                o['total_amount_display'] = f"{amount:,.2f} $"
+            except (ValueError, TypeError):
+                o['total_amount_display'] = str(o.get('total_amount_usd', o.get('total_amount', '')))
         self.table.set_data(orders)
     
     def clear_filters(self):
@@ -358,7 +374,20 @@ class PurchaseOrdersView(QWidget):
             dialog.approve_requested.connect(self.approve_order)
             dialog.mark_ordered_requested.connect(self.mark_order_ordered)
             dialog.receive_requested.connect(self.receive_goods)
+            dialog.payment_requested.connect(self.create_supplier_payment)
             dialog.exec()
+
+    @handle_ui_error
+    def create_supplier_payment(self, order: dict):
+        dialog = SupplierPaymentDialog(order=order, parent=self)
+        dialog.saved.connect(self.save_supplier_payment)
+        dialog.exec()
+
+    @handle_ui_error
+    def save_supplier_payment(self, data: dict):
+        api.create_supplier_payment(data)
+        MessageDialog.success(self, "نجاح", "تم تسجيل دفعة المورد بنجاح")
+        self.apply_filters()
     
     @handle_ui_error
     def approve_order(self, order: dict):
@@ -502,6 +531,28 @@ class PurchaseOrderFormDialog(QDialog):
         self.expected_date_edit.setDate(QDate.currentDate().addDays(7))
         grid_layout.addWidget(self.expected_date_edit, 1, 3)
 
+        grid_layout.addWidget(QLabel("تاريخ سعر الصرف *"), 2, 0)
+        self.fx_rate_date_edit = QDateEdit()
+        self.fx_rate_date_edit.setCalendarPopup(True)
+        self.fx_rate_date_edit.setDate(QDate.currentDate())
+        grid_layout.addWidget(self.fx_rate_date_edit, 2, 1)
+
+        grid_layout.addWidget(QLabel("USD → ل.س قديم *"), 2, 2)
+        self.usd_to_syp_old_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_old_snapshot.setRange(0, 999999999999)
+        self.usd_to_syp_old_snapshot.setDecimals(6)
+        grid_layout.addWidget(self.usd_to_syp_old_snapshot, 2, 3)
+
+        grid_layout.addWidget(QLabel("USD → ل.س جديد"), 3, 2)
+        self.usd_to_syp_new_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_new_snapshot.setRange(0, 999999999999)
+        self.usd_to_syp_new_snapshot.setDecimals(6)
+        grid_layout.addWidget(self.usd_to_syp_new_snapshot, 3, 3)
+
+        self._updating_fx = False
+        self.usd_to_syp_old_snapshot.valueChanged.connect(self._on_old_fx_changed)
+        self.usd_to_syp_new_snapshot.valueChanged.connect(self._on_new_fx_changed)
+
         info_card_layout.addLayout(grid_layout)
         left_column.addWidget(info_card)
 
@@ -538,7 +589,7 @@ class PurchaseOrderFormDialog(QDialog):
 
         self.price_spin = QDoubleSpinBox()
         self.price_spin.setRange(0, 999999999)
-        self.price_spin.setPrefix("السعر: ")
+        self.price_spin.setPrefix("السعر ($): ")
         self.price_spin.setMinimumWidth(120)
         entry_layout.addWidget(self.price_spin, 1)
 
@@ -673,7 +724,7 @@ class PurchaseOrderFormDialog(QDialog):
             else:
                 lbl.setProperty("class", "body")
             
-            val = QLabel("0.00 ل.س")
+            val = QLabel("0.00 $")
             if is_grand:
                 val.setFont(QFont(Fonts.FAMILY_AR, 14, QFont.Bold))
                 val.setStyleSheet(f"color: {Colors.PRIMARY};")
@@ -743,6 +794,14 @@ class PurchaseOrderFormDialog(QDialog):
         barcode = self.barcode_input.text().strip()
         if not barcode:
             return
+
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+        fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+        if fx_old <= 0 and fx_new <= 0:
+            MessageDialog.warning(self, "تنبيه", "يجب إدخال سعر الصرف قبل إضافة المنتجات")
+            return
+        if fx_old <= 0 and fx_new > 0:
+            fx_old = fx_new * 100
         
         # Find product by barcode in cache
         product_found = None
@@ -764,7 +823,11 @@ class PurchaseOrderFormDialog(QDialog):
         if product_found:
             product_id = product_found.get('id')
             product_name = product_found.get('name', '')
-            unit_price = float(product_found.get('cost_price', 0))
+            cost_usd = product_found.get('cost_price_usd', None)
+            if cost_usd is not None:
+                unit_price = float(cost_usd or 0)
+            else:
+                unit_price = float(product_found.get('cost_price', 0) or 0) / fx_old
             
             # Get product units for unit selection
             product_units = product_found.get('product_units', [])
@@ -790,9 +853,13 @@ class PurchaseOrderFormDialog(QDialog):
                     unit_symbol = selected_unit.get('unit_symbol', '')
                     product_unit_id = selected_unit.get('id')
                     # Use unit-specific cost price if available
-                    unit_cost_price = float(selected_unit.get('cost_price', 0))
-                    if unit_cost_price > 0:
-                        unit_price = unit_cost_price
+                    unit_cost_usd = selected_unit.get('cost_price_usd', None)
+                    if unit_cost_usd is not None and float(unit_cost_usd or 0) > 0:
+                        unit_price = float(unit_cost_usd or 0)
+                    else:
+                        unit_cost_price = float(selected_unit.get('cost_price', 0) or 0)
+                        if unit_cost_price > 0:
+                            unit_price = unit_cost_price / fx_old
             
             # Check if product with same unit already in list
             for item in self.items:
@@ -866,7 +933,7 @@ class PurchaseOrderFormDialog(QDialog):
             self.product_combo.clear()
             self.product_combo.addItem("اختر المنتج...", None)
             for product in self.products_cache:
-                display_text = f"{product.get('name', '')} - {float(product.get('cost_price', 0)):,.2f} ل.س"
+                display_text = f"{product.get('name', '')}"
                 self.product_combo.addItem(display_text, product.get('id'))
             
             # Update price when product is selected
@@ -881,8 +948,16 @@ class PurchaseOrderFormDialog(QDialog):
         if product_id:
             for product in self.products_cache:
                 if product.get('id') == product_id:
-                    # Update price with base cost price
-                    self.price_spin.setValue(float(product.get('cost_price', 0)))
+                    fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+                    cost_usd = product.get('cost_price_usd', None)
+                    if cost_usd is not None:
+                        self.price_spin.setValue(float(cost_usd or 0))
+                    else:
+                        cost_syp_old = float(product.get('cost_price', 0) or 0)
+                        if fx_old > 0:
+                            self.price_spin.setValue(cost_syp_old / fx_old)
+                        else:
+                            self.price_spin.setValue(cost_syp_old)
                     
                     # Update unit selector with product units
                     # Requirements: 4.1 - Display available units for selected product
@@ -900,8 +975,21 @@ class PurchaseOrderFormDialog(QDialog):
         
         Requirements: 4.2 - Allow entering unit-specific cost
         """
+        if pu_id is None:
+            return
+
+        selected_unit = self.unit_selector.get_selected_unit() or {}
+        cost_usd = selected_unit.get('cost_price_usd', None)
+        if cost_usd is not None and float(cost_usd or 0) > 0:
+            self.price_spin.setValue(float(cost_usd or 0))
+            return
+
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
         if cost_price > 0:
-            self.price_spin.setValue(cost_price)
+            if fx_old > 0:
+                self.price_spin.setValue(cost_price / fx_old)
+            else:
+                self.price_spin.setValue(cost_price)
     
     def add_item(self):
         """Add item to the items list."""
@@ -999,8 +1087,8 @@ class PurchaseOrderFormDialog(QDialog):
         
         # Update summary
         total = sum(item['total'] for item in self.items)
-        self.subtotal_value.setText(f"{total:,.2f} ل.س")
-        self.total_value.setText(f"{total:,.2f} ل.س")
+        self.subtotal_value.setText(f"{total:,.2f} $")
+        self.total_value.setText(f"{total:,.2f} $")
         
         # Auto-scroll to last item - Requirements: 2.3
         if self.items:
@@ -1037,16 +1125,27 @@ class PurchaseOrderFormDialog(QDialog):
         if not self.items:
             MessageDialog.warning(self, "تنبيه", "يجب إضافة منتج واحد على الأقل")
             return False
-        
+
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+        fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+        if fx_old <= 0 and fx_new <= 0:
+            MessageDialog.warning(self, "تنبيه", "يجب إدخال سعر الصرف")
+            return False
+
         return True
     
     def get_data(self) -> dict:
         """Get form data as dictionary."""
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+        fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
         data = {
             'supplier': self.supplier_combo.currentData(),
             'warehouse': self.warehouse_combo.currentData(),
             'order_date': self.order_date_edit.date().toString('yyyy-MM-dd'),
             'expected_date': self.expected_date_edit.date().toString('yyyy-MM-dd'),
+            'fx_rate_date': self.fx_rate_date_edit.date().toString('yyyy-MM-dd'),
+            'usd_to_syp_old_snapshot': fx_old if fx_old > 0 else None,
+            'usd_to_syp_new_snapshot': fx_new if fx_new > 0 else None,
             'confirm': True,
             'items': [
                 {
@@ -1071,6 +1170,22 @@ class PurchaseOrderFormDialog(QDialog):
             self.saved.emit(self.get_data())
             self.accept()
 
+    def _on_old_fx_changed(self, value: float):
+        if self._updating_fx:
+            return
+        if value and value > 0 and (self.usd_to_syp_new_snapshot.value() or 0) <= 0:
+            self._updating_fx = True
+            self.usd_to_syp_new_snapshot.setValue(value / 100)
+            self._updating_fx = False
+
+    def _on_new_fx_changed(self, value: float):
+        if self._updating_fx:
+            return
+        if value and value > 0 and (self.usd_to_syp_old_snapshot.value() or 0) <= 0:
+            self._updating_fx = True
+            self.usd_to_syp_old_snapshot.setValue(value * 100)
+            self._updating_fx = False
+
 
 class PurchaseOrderDetailsDialog(QDialog):
     """
@@ -1083,6 +1198,7 @@ class PurchaseOrderDetailsDialog(QDialog):
     approve_requested = Signal(dict)  # Emits order data when approve is requested
     mark_ordered_requested = Signal(dict)  # Emits order data when mark ordered is requested
     receive_requested = Signal(dict)  # Emits order data when receive goods is requested
+    payment_requested = Signal(dict)
     
     def __init__(self, order: dict, parent=None):
         """
@@ -1160,19 +1276,19 @@ class PurchaseOrderDetailsDialog(QDialog):
         # Right column - amounts
         right_col = QVBoxLayout()
         right_col.setSpacing(8)
-        total = float(self.order.get('total_amount', 0))
-        paid = float(self.order.get('paid_amount', 0))
-        remaining = float(self.order.get('remaining_amount', total - paid))
+        total = float(self.order.get('total_amount_usd', self.order.get('total_amount', 0)) or 0)
+        paid = float(self.order.get('paid_amount_usd', self.order.get('paid_amount', 0)) or 0)
+        remaining = float(self.order.get('remaining_amount_usd', total - paid) or 0)
         
-        total_label = QLabel(f"💰 الإجمالي: {total:,.2f} ل.س")
+        total_label = QLabel(f"💰 الإجمالي: {total:,.2f} $")
         total_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
         right_col.addWidget(total_label)
         
-        paid_label = QLabel(f"✅ المدفوع: {paid:,.2f} ل.س")
+        paid_label = QLabel(f"✅ المدفوع: {paid:,.2f} $")
         paid_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         right_col.addWidget(paid_label)
         
-        remaining_label = QLabel(f"⏳ المتبقي: {remaining:,.2f} ل.س")
+        remaining_label = QLabel(f"⏳ المتبقي: {remaining:,.2f} $")
         if remaining > 0:
             remaining_label.setStyleSheet(f"color: {Colors.WARNING};")
         right_col.addWidget(remaining_label)
@@ -1260,6 +1376,14 @@ class PurchaseOrderDetailsDialog(QDialog):
             receive_btn.setMinimumHeight(44)
             receive_btn.clicked.connect(self.request_receive)
             buttons_layout.addWidget(receive_btn)
+
+        remaining_usd = float(self.order.get('remaining_amount_usd', 0) or 0)
+        if remaining_usd > 0:
+            pay_btn = QPushButton("💸 تسجيل دفعة")
+            pay_btn.setProperty("class", "success")
+            pay_btn.setMinimumHeight(44)
+            pay_btn.clicked.connect(self.request_payment)
+            buttons_layout.addWidget(pay_btn)
         
         buttons_layout.addStretch()
         
@@ -1298,6 +1422,209 @@ class PurchaseOrderDetailsDialog(QDialog):
         """Request to receive goods for this order."""
         self.receive_requested.emit(self.order)
         self.accept()
+
+    def request_payment(self):
+        self.payment_requested.emit(self.order)
+        self.accept()
+
+
+class SupplierPaymentDialog(QDialog):
+
+    saved = Signal(dict)
+
+    def __init__(self, order: dict = None, parent=None):
+        super().__init__(parent)
+        self.order = order or {}
+        self.suppliers_cache = []
+        self._updating_fx = False
+        self.setWindowTitle("تسجيل دفعة مورد")
+        self.setMinimumWidth(520)
+        self.setup_ui()
+        self.load_data()
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
+
+        title = QLabel("💸 تسجيل دفعة مورد")
+        title.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H2, QFont.Bold))
+        layout.addWidget(title)
+
+        frame = Card()
+        frame_layout = QGridLayout(frame)
+        frame_layout.setSpacing(10)
+
+        frame_layout.addWidget(QLabel("المورد *"), 0, 0)
+        self.supplier_combo = QComboBox()
+        frame_layout.addWidget(self.supplier_combo, 0, 1)
+
+        frame_layout.addWidget(QLabel("أمر الشراء"), 0, 2)
+        self.purchase_order_label = QLabel("-")
+        frame_layout.addWidget(self.purchase_order_label, 0, 3)
+
+        frame_layout.addWidget(QLabel("تاريخ الدفع *"), 1, 0)
+        self.payment_date_edit = QDateEdit()
+        self.payment_date_edit.setCalendarPopup(True)
+        self.payment_date_edit.setDate(QDate.currentDate())
+        frame_layout.addWidget(self.payment_date_edit, 1, 1)
+
+        frame_layout.addWidget(QLabel("عملة الدفع *"), 1, 2)
+        self.currency_combo = QComboBox()
+        self.currency_combo.addItem("USD", "USD")
+        self.currency_combo.addItem("ل.س قديم", "SYP_OLD")
+        self.currency_combo.addItem("ل.س جديد", "SYP_NEW")
+        frame_layout.addWidget(self.currency_combo, 1, 3)
+
+        frame_layout.addWidget(QLabel("المبلغ *"), 2, 0)
+        self.amount_spin = QDoubleSpinBox()
+        self.amount_spin.setRange(0.01, 999999999999)
+        self.amount_spin.setDecimals(2)
+        frame_layout.addWidget(self.amount_spin, 2, 1)
+
+        frame_layout.addWidget(QLabel("طريقة الدفع *"), 2, 2)
+        self.method_combo = QComboBox()
+        self.method_combo.addItem("نقداً", "cash")
+        self.method_combo.addItem("تحويل بنكي", "bank")
+        self.method_combo.addItem("شيك", "check")
+        self.method_combo.addItem("بطاقة ائتمان", "credit")
+        frame_layout.addWidget(self.method_combo, 2, 3)
+
+        frame_layout.addWidget(QLabel("تاريخ سعر الصرف"), 3, 0)
+        self.fx_rate_date_edit = QDateEdit()
+        self.fx_rate_date_edit.setCalendarPopup(True)
+        self.fx_rate_date_edit.setDate(QDate.currentDate())
+        frame_layout.addWidget(self.fx_rate_date_edit, 3, 1)
+
+        frame_layout.addWidget(QLabel("USD → ل.س قديم"), 3, 2)
+        self.usd_to_syp_old_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_old_snapshot.setRange(0, 999999999999)
+        self.usd_to_syp_old_snapshot.setDecimals(6)
+        frame_layout.addWidget(self.usd_to_syp_old_snapshot, 3, 3)
+
+        frame_layout.addWidget(QLabel("USD → ل.س جديد"), 4, 2)
+        self.usd_to_syp_new_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_new_snapshot.setRange(0, 999999999999)
+        self.usd_to_syp_new_snapshot.setDecimals(6)
+        frame_layout.addWidget(self.usd_to_syp_new_snapshot, 4, 3)
+
+        frame_layout.addWidget(QLabel("المرجع"), 5, 0)
+        self.reference_edit = QLineEdit()
+        frame_layout.addWidget(self.reference_edit, 5, 1)
+
+        frame_layout.addWidget(QLabel("ملاحظات"), 5, 2)
+        self.notes_edit = QLineEdit()
+        frame_layout.addWidget(self.notes_edit, 5, 3)
+
+        layout.addWidget(frame)
+
+        self.usd_to_syp_old_snapshot.valueChanged.connect(self._on_old_fx_changed)
+        self.usd_to_syp_new_snapshot.valueChanged.connect(self._on_new_fx_changed)
+        self.currency_combo.currentIndexChanged.connect(self._on_currency_changed)
+        self._on_currency_changed()
+
+        btns = QHBoxLayout()
+        save_btn = QPushButton("✅ حفظ")
+        save_btn.setProperty("class", "success")
+        save_btn.setMinimumHeight(44)
+        save_btn.clicked.connect(self.save)
+        btns.addWidget(save_btn)
+        btns.addStretch()
+        cancel_btn = QPushButton("إلغاء")
+        cancel_btn.setProperty("class", "secondary")
+        cancel_btn.setMinimumHeight(44)
+        cancel_btn.clicked.connect(self.reject)
+        btns.addWidget(cancel_btn)
+        layout.addLayout(btns)
+
+    def load_data(self):
+        response = api.get_suppliers()
+        if isinstance(response, dict) and 'results' in response:
+            self.suppliers_cache = response['results']
+        else:
+            self.suppliers_cache = response if isinstance(response, list) else []
+
+        self.supplier_combo.clear()
+        self.supplier_combo.addItem("اختر المورد...", None)
+        for s in self.suppliers_cache:
+            self.supplier_combo.addItem(s.get('name', ''), s.get('id'))
+
+        supplier_id = self.order.get('supplier')
+        if supplier_id:
+            for i in range(self.supplier_combo.count()):
+                if self.supplier_combo.itemData(i) == supplier_id:
+                    self.supplier_combo.setCurrentIndex(i)
+                    self.supplier_combo.setEnabled(False)
+                    break
+
+        po_number = self.order.get('order_number')
+        if po_number:
+            self.purchase_order_label.setText(str(po_number))
+
+    def _on_currency_changed(self):
+        currency = self.currency_combo.currentData()
+        fx_enabled = currency != 'USD'
+        self.fx_rate_date_edit.setEnabled(fx_enabled)
+        self.usd_to_syp_old_snapshot.setEnabled(fx_enabled)
+        self.usd_to_syp_new_snapshot.setEnabled(fx_enabled)
+
+    def _on_old_fx_changed(self, value: float):
+        if self._updating_fx:
+            return
+        if value and value > 0 and (self.usd_to_syp_new_snapshot.value() or 0) <= 0:
+            self._updating_fx = True
+            self.usd_to_syp_new_snapshot.setValue(value / 100)
+            self._updating_fx = False
+
+    def _on_new_fx_changed(self, value: float):
+        if self._updating_fx:
+            return
+        if value and value > 0 and (self.usd_to_syp_old_snapshot.value() or 0) <= 0:
+            self._updating_fx = True
+            self.usd_to_syp_old_snapshot.setValue(value * 100)
+            self._updating_fx = False
+
+    def validate(self) -> bool:
+        supplier_id = self.supplier_combo.currentData()
+        if not supplier_id:
+            MessageDialog.warning(self, "تنبيه", "يجب اختيار المورد")
+            return False
+
+        amount = float(self.amount_spin.value() or 0)
+        if amount <= 0:
+            MessageDialog.warning(self, "تنبيه", "يجب إدخال مبلغ صحيح")
+            return False
+
+        return True
+
+    def get_data(self) -> dict:
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+        fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+        data = {
+            'supplier': self.supplier_combo.currentData(),
+            'purchase_order': self.order.get('id') if self.order.get('id') else None,
+            'payment_date': self.payment_date_edit.date().toString('yyyy-MM-dd'),
+            'transaction_currency': self.currency_combo.currentData(),
+            'amount': float(self.amount_spin.value()),
+            'payment_method': self.method_combo.currentData(),
+            'fx_rate_date': self.fx_rate_date_edit.date().toString('yyyy-MM-dd'),
+            'usd_to_syp_old_snapshot': fx_old if fx_old > 0 else None,
+            'usd_to_syp_new_snapshot': fx_new if fx_new > 0 else None,
+            'reference': self.reference_edit.text().strip() or None,
+            'notes': self.notes_edit.text().strip() or None,
+        }
+        if not data['purchase_order']:
+            data.pop('purchase_order')
+        if data.get('transaction_currency') == 'USD':
+            data.pop('fx_rate_date', None)
+            data.pop('usd_to_syp_old_snapshot', None)
+            data.pop('usd_to_syp_new_snapshot', None)
+        return data
+
+    def save(self):
+        if self.validate():
+            self.saved.emit(self.get_data())
+            self.accept()
 
 
 class GoodsReceiptDialog(QDialog):

@@ -178,6 +178,31 @@ class SupplierPaymentViewSet(viewsets.ModelViewSet):
     search_fields = ['payment_number', 'supplier__name', 'reference']
     ordering = ['-payment_date', '-payment_number']
 
+    def create(self, request, *args, **kwargs):
+        """Create supplier payment using PurchaseService for proper balance updates."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+
+        payment = PurchaseService.make_supplier_payment(
+            supplier_id=data['supplier'].id,
+            payment_date=data['payment_date'],
+            amount=data['amount'],
+            payment_method=data['payment_method'],
+            purchase_order_id=data.get('purchase_order').id if data.get('purchase_order') else None,
+            transaction_currency=data.get('transaction_currency') or 'USD',
+            fx_rate_date=data.get('fx_rate_date'),
+            usd_to_syp_old_snapshot=data.get('usd_to_syp_old_snapshot'),
+            usd_to_syp_new_snapshot=data.get('usd_to_syp_new_snapshot'),
+            reference=data.get('reference'),
+            notes=data.get('notes'),
+            user=request.user
+        )
+
+        output_serializer = SupplierPaymentSerializer(payment)
+        return Response(output_serializer.data, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 

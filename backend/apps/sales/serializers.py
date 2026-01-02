@@ -1,8 +1,11 @@
 """
 Sales Serializers
 """
+from datetime import date
 from decimal import Decimal
 from rest_framework import serializers
+
+from apps.core.utils import get_daily_fx, to_usd
 from .models import Customer, Invoice, InvoiceItem, Payment, SalesReturn, SalesReturnItem, PaymentAllocation
 
 
@@ -10,12 +13,42 @@ class CustomerListSerializer(serializers.ModelSerializer):
     """Serializer for Customer list view."""
     
     customer_type_display = serializers.CharField(source='get_customer_type_display', read_only=True)
+    credit_limit_usd = serializers.SerializerMethodField()
+    available_credit_usd = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            self._fx_old, self._fx_new = get_daily_fx(date.today())
+        except Exception:
+            self._fx_old, self._fx_new = None, None
+
+    def get_credit_limit_usd(self, obj):
+        credit_limit = obj.credit_limit or Decimal('0.00')
+        if not self._fx_old or not self._fx_new:
+            return Decimal('0.00')
+        return to_usd(
+            credit_limit,
+            'SYP_OLD',
+            usd_to_syp_old=self._fx_old,
+            usd_to_syp_new=self._fx_new
+        )
+
+    def get_available_credit_usd(self, obj):
+        credit_limit_usd = self.get_credit_limit_usd(obj)
+        if credit_limit_usd <= 0:
+            return Decimal('0.00')
+        current_balance_usd = obj.current_balance_usd or Decimal('0.00')
+        return credit_limit_usd - current_balance_usd
     
     class Meta:
         model = Customer
         fields = [
             'id', 'code', 'name', 'name_en', 'customer_type', 'customer_type_display',
-            'phone', 'mobile', 'email', 'current_balance', 'credit_limit', 'is_active'
+            'phone', 'mobile', 'email',
+            'current_balance', 'current_balance_usd',
+            'credit_limit', 'credit_limit_usd', 'available_credit_usd',
+            'is_active'
         ]
 
 
@@ -25,7 +58,34 @@ class CustomerDetailSerializer(serializers.ModelSerializer):
     customer_type_display = serializers.CharField(source='get_customer_type_display', read_only=True)
     full_address = serializers.CharField(read_only=True)
     available_credit = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    credit_limit_usd = serializers.SerializerMethodField()
+    available_credit_usd = serializers.SerializerMethodField()
     salesperson_name = serializers.CharField(source='salesperson.full_name', read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        try:
+            self._fx_old, self._fx_new = get_daily_fx(date.today())
+        except Exception:
+            self._fx_old, self._fx_new = None, None
+
+    def get_credit_limit_usd(self, obj):
+        credit_limit = obj.credit_limit or Decimal('0.00')
+        if not self._fx_old or not self._fx_new:
+            return Decimal('0.00')
+        return to_usd(
+            credit_limit,
+            'SYP_OLD',
+            usd_to_syp_old=self._fx_old,
+            usd_to_syp_new=self._fx_new
+        )
+
+    def get_available_credit_usd(self, obj):
+        credit_limit_usd = self.get_credit_limit_usd(obj)
+        if credit_limit_usd <= 0:
+            return Decimal('0.00')
+        current_balance_usd = obj.current_balance_usd or Decimal('0.00')
+        return credit_limit_usd - current_balance_usd
     
     class Meta:
         model = Customer
@@ -34,8 +94,9 @@ class CustomerDetailSerializer(serializers.ModelSerializer):
             'tax_number', 'commercial_register', 'contact_person',
             'phone', 'mobile', 'email', 'fax', 'website',
             'address', 'city', 'region', 'postal_code', 'country', 'full_address',
-            'credit_limit', 'available_credit', 'payment_terms', 'discount_percent',
-            'opening_balance', 'current_balance',
+            'credit_limit', 'credit_limit_usd', 'available_credit', 'available_credit_usd',
+            'payment_terms', 'discount_percent',
+            'opening_balance', 'opening_balance_usd', 'current_balance', 'current_balance_usd',
             'salesperson', 'salesperson_name',
             'notes', 'is_active', 'created_at', 'updated_at'
         ]
@@ -118,6 +179,7 @@ class InvoiceListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     invoice_type_display = serializers.CharField(source='get_invoice_type_display', read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    remaining_amount_usd = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     returns_total = serializers.SerializerMethodField()
     net_total = serializers.SerializerMethodField()
     net_remaining = serializers.SerializerMethodField()
@@ -129,8 +191,12 @@ class InvoiceListSerializer(serializers.ModelSerializer):
             'id', 'invoice_number', 'invoice_type', 'invoice_type_display',
             'customer', 'customer_name', 'customer_code', 
             'warehouse', 'warehouse_name', 'invoice_date', 'due_date',
-            'status', 'status_display', 'subtotal', 'discount_amount',
-            'tax_amount', 'total_amount', 'paid_amount', 'remaining_amount',
+            'status', 'status_display',
+            'transaction_currency',
+            'subtotal', 'discount_amount',
+            'tax_amount', 'total_amount', 'total_amount_usd',
+            'paid_amount', 'paid_amount_usd',
+            'remaining_amount', 'remaining_amount_usd',
             'returns_total', 'net_total', 'net_remaining', 'refund_amount'
         ]
 
@@ -161,6 +227,7 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     invoice_type_display = serializers.CharField(source='get_invoice_type_display', read_only=True)
     remaining_amount = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    remaining_amount_usd = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     returns_total = serializers.SerializerMethodField()
     net_total = serializers.SerializerMethodField()
     net_remaining = serializers.SerializerMethodField()
@@ -175,8 +242,12 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             'customer', 'customer_name', 'customer_phone',
             'warehouse', 'warehouse_name',
             'invoice_date', 'due_date', 'status', 'status_display',
+            'transaction_currency',
+            'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
             'subtotal', 'discount_percent', 'discount_amount',
-            'tax_amount', 'total_amount', 'paid_amount', 'remaining_amount',
+            'tax_amount', 'total_amount', 'total_amount_usd',
+            'paid_amount', 'paid_amount_usd',
+            'remaining_amount', 'remaining_amount_usd',
             'returns_total', 'net_total', 'net_remaining', 'refund_amount',
             'notes', 'internal_notes', 'return_for',
             'created_by', 'created_by_name', 'created_at', 'updated_at',
@@ -229,20 +300,29 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
     confirm = serializers.BooleanField(write_only=True, required=False, default=False)
     paid_amount = serializers.DecimalField(max_digits=15, decimal_places=2, write_only=True, required=False, allow_null=True)
     payment_method = serializers.CharField(max_length=20, write_only=True, required=False, allow_null=True, allow_blank=True)
+    override_credit_limit = serializers.BooleanField(write_only=True, required=False, default=False)
+    override_reason = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
     
     class Meta:
         model = Invoice
         fields = [
             'invoice_type', 'customer', 'warehouse',
             'invoice_date', 'due_date',
+            'transaction_currency',
+            'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
             'discount_percent', 'discount_amount',
             'notes', 'internal_notes', 'items',
             # Non-model fields must be listed here too for DRF to include them
             'confirm', 'paid_amount', 'payment_method',
+            'override_credit_limit', 'override_reason',
         ]
         # Tell DRF these are not model fields
         extra_kwargs = {
             'due_date': {'required': False, 'allow_null': True},
+            'transaction_currency': {'required': False},
+            'fx_rate_date': {'required': False, 'allow_null': True},
+            'usd_to_syp_old_snapshot': {'required': False, 'allow_null': True},
+            'usd_to_syp_new_snapshot': {'required': False, 'allow_null': True},
             'discount_percent': {'required': False},
             'discount_amount': {'required': False},
             'notes': {'required': False, 'allow_blank': True},
@@ -257,69 +337,76 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         from django.db import transaction
-        from apps.inventory.models import Product
         from decimal import Decimal
-        
+        from .services import SalesService
+
         items_data = validated_data.pop('items')
-        # Pop non-model fields before creating invoice
         confirm = validated_data.pop('confirm', False)
         paid_amount = validated_data.pop('paid_amount', None)
         payment_method = validated_data.pop('payment_method', None)
-        
+        override_credit_limit = validated_data.pop('override_credit_limit', False)
+        override_reason = validated_data.pop('override_reason', None)
+
+        created_by = validated_data.pop('created_by', None)
+
+        customer = validated_data.get('customer')
+        warehouse = validated_data.get('warehouse')
+
+        service_items = []
+        for item in items_data:
+            product = item.get('product')
+            product_unit = item.get('product_unit')
+            payload = {
+                'product_id': product.id if product else None,
+                'quantity': item.get('quantity'),
+                'discount_percent': item.get('discount_percent', Decimal('0.00')),
+                'notes': item.get('notes'),
+            }
+
+            if product_unit:
+                payload['product_unit_id'] = product_unit.id
+
+            if item.get('unit_price') is not None:
+                payload['unit_price'] = item.get('unit_price')
+
+            if item.get('cost_price') is not None:
+                payload['cost_price'] = item.get('cost_price')
+
+            if item.get('tax_rate') is not None:
+                payload['tax_rate'] = item.get('tax_rate')
+
+            service_items.append(payload)
+
         with transaction.atomic():
-            # Create the invoice
-            invoice = Invoice.objects.create(**validated_data)
-            
-            # Create all items
-            for item_data in items_data:
-                product = item_data.get('product')
-                product_unit = item_data.get('product_unit')
-                
-                # Set default cost_price from product_unit or product if not provided
-                if 'cost_price' not in item_data or item_data.get('cost_price') is None:
-                    if product_unit and product_unit.cost_price:
-                        item_data['cost_price'] = product_unit.cost_price
-                    else:
-                        item_data['cost_price'] = product.cost_price if product else Decimal('0.00')
-                
-                # Set default unit_price from product_unit or product if not provided
-                if 'unit_price' not in item_data or item_data.get('unit_price') is None:
-                    if product_unit and product_unit.sale_price:
-                        item_data['unit_price'] = product_unit.sale_price
-                    else:
-                        item_data['unit_price'] = product.sale_price if product else Decimal('0.00')
-                
-                # Set default tax_rate from product only if not explicitly provided
-                # Note: tax_rate=0 is a valid explicit value (no tax)
-                if 'tax_rate' not in item_data:
-                    if product and product.is_taxable:
-                        item_data['tax_rate'] = product.tax_rate
-                    else:
-                        item_data['tax_rate'] = Decimal('0.00')
-                elif item_data.get('tax_rate') is None:
-                    item_data['tax_rate'] = Decimal('0.00')
-                
-                # Set default discount_percent if not provided
-                if 'discount_percent' not in item_data or item_data.get('discount_percent') is None:
-                    item_data['discount_percent'] = Decimal('0.00')
-                
-                InvoiceItem.objects.create(invoice=invoice, **item_data)
-            
-            # Calculate totals after all items are created
-            invoice.calculate_totals()
-            
-            # Atomic confirmation if requested
+            invoice = SalesService.create_invoice(
+                customer_id=customer.id if customer else None,
+                warehouse_id=warehouse.id if warehouse else None,
+                invoice_date=validated_data.get('invoice_date'),
+                items=service_items,
+                invoice_type=validated_data.get('invoice_type', 'cash'),
+                discount_percent=validated_data.get('discount_percent', Decimal('0.00')),
+                discount_amount=validated_data.get('discount_amount', Decimal('0.00')),
+                due_date=validated_data.get('due_date'),
+                notes=validated_data.get('notes'),
+                internal_notes=validated_data.get('internal_notes'),
+                user=created_by,
+                override_credit_limit=override_credit_limit,
+                override_reason=override_reason,
+                transaction_currency=validated_data.get('transaction_currency', 'SYP_OLD'),
+                fx_rate_date=validated_data.get('fx_rate_date'),
+                usd_to_syp_old_snapshot=validated_data.get('usd_to_syp_old_snapshot'),
+                usd_to_syp_new_snapshot=validated_data.get('usd_to_syp_new_snapshot'),
+            )
+
             if confirm:
-                from .services import SalesService
                 SalesService.confirm_invoice(
                     invoice.id,
-                    user=invoice.created_by,
+                    user=created_by,
                     paid_amount=paid_amount,
                     payment_method=payment_method
                 )
-                # Refresh to get updated status and paid_amount
                 invoice.refresh_from_db()
-        
+
         return invoice
 
 
@@ -334,7 +421,9 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'id', 'payment_number', 'customer', 'customer_name',
-            'invoice', 'payment_date', 'amount',
+            'invoice', 'payment_date',
+            'transaction_currency', 'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
+            'amount', 'amount_usd',
             'payment_method', 'payment_method_display',
             'reference', 'notes',
             'received_by', 'received_by_name', 'created_at'
@@ -516,12 +605,21 @@ class PaymentAllocationSerializer(serializers.ModelSerializer):
     invoice_remaining = serializers.DecimalField(
         source='invoice.remaining_amount', max_digits=15, decimal_places=2, read_only=True
     )
+    invoice_transaction_currency = serializers.CharField(source='invoice.transaction_currency', read_only=True)
+    invoice_total_usd = serializers.DecimalField(
+        source='invoice.total_amount_usd', max_digits=15, decimal_places=2, read_only=True
+    )
+    invoice_remaining_usd = serializers.DecimalField(
+        source='invoice.remaining_amount_usd', max_digits=15, decimal_places=2, read_only=True
+    )
     
     class Meta:
         model = PaymentAllocation
         fields = [
             'id', 'payment', 'invoice', 'invoice_number', 'invoice_date',
-            'invoice_total', 'invoice_remaining', 'amount'
+            'invoice_total', 'invoice_remaining',
+            'invoice_transaction_currency', 'invoice_total_usd', 'invoice_remaining_usd',
+            'amount', 'amount_usd'
         ]
         read_only_fields = ['id']
 
@@ -530,7 +628,20 @@ class PaymentAllocationCreateSerializer(serializers.Serializer):
     """Serializer for creating payment allocations."""
     
     invoice_id = serializers.IntegerField()
-    amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True)
+    amount_usd = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, allow_null=True)
+
+    def validate(self, attrs):
+        amount = attrs.get('amount')
+        amount_usd = attrs.get('amount_usd')
+
+        amount_ok = amount is not None and amount > Decimal('0')
+        amount_usd_ok = amount_usd is not None and amount_usd > Decimal('0')
+
+        if not amount_ok and not amount_usd_ok:
+            raise serializers.ValidationError({'amount': 'يجب إدخال مبلغ التخصيص'})
+
+        return attrs
 
 
 class PaymentWithAllocationsSerializer(serializers.ModelSerializer):
@@ -545,7 +656,9 @@ class PaymentWithAllocationsSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'id', 'payment_number', 'customer', 'customer_name',
-            'invoice', 'payment_date', 'amount',
+            'invoice', 'payment_date',
+            'transaction_currency', 'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
+            'amount', 'amount_usd',
             'payment_method', 'payment_method_display',
             'reference', 'notes',
             'received_by', 'received_by_name', 'created_at',
@@ -560,6 +673,13 @@ class CollectPaymentWithAllocationSerializer(serializers.Serializer):
     customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all())
     payment_date = serializers.DateField()
     amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    transaction_currency = serializers.ChoiceField(
+        choices=Payment._meta.get_field('transaction_currency').choices,
+        required=False
+    )
+    fx_rate_date = serializers.DateField(required=False, allow_null=True)
+    usd_to_syp_old_snapshot = serializers.DecimalField(max_digits=18, decimal_places=6, required=False, allow_null=True)
+    usd_to_syp_new_snapshot = serializers.DecimalField(max_digits=18, decimal_places=6, required=False, allow_null=True)
     payment_method = serializers.ChoiceField(choices=Payment.PaymentMethod.choices)
     reference = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -574,8 +694,15 @@ class UnpaidInvoiceSerializer(serializers.Serializer):
     invoice_number = serializers.CharField()
     invoice_date = serializers.DateField()
     due_date = serializers.DateField(allow_null=True)
+    transaction_currency = serializers.CharField(required=False, allow_null=True)
+    fx_rate_date = serializers.DateField(required=False, allow_null=True)
+    usd_to_syp_old_snapshot = serializers.DecimalField(max_digits=18, decimal_places=6, required=False, allow_null=True)
+    usd_to_syp_new_snapshot = serializers.DecimalField(max_digits=18, decimal_places=6, required=False, allow_null=True)
     total_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
     paid_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
     remaining_amount = serializers.DecimalField(max_digits=15, decimal_places=2)
+    total_amount_usd = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
+    paid_amount_usd = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
+    remaining_amount_usd = serializers.DecimalField(max_digits=15, decimal_places=2, required=False)
     status = serializers.CharField()
     is_overdue = serializers.BooleanField()

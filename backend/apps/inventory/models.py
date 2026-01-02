@@ -134,11 +134,25 @@ class ProductUnit(BaseModel):
         default=Decimal('0.00'),
         verbose_name='سعر البيع'
     )
+    sale_price_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='سعر البيع (USD)'
+    )
     cost_price = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal('0.00'),
         verbose_name='سعر التكلفة'
+    )
+    cost_price_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='سعر التكلفة (USD)'
     )
     barcode = models.CharField(
         max_length=50,
@@ -284,11 +298,25 @@ class Product(BaseModel):
         default=Decimal('0.00'),
         verbose_name='سعر التكلفة'
     )
+    cost_price_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='سعر التكلفة (USD)'
+    )
     sale_price = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal('0.00'),
         verbose_name='سعر البيع'
+    )
+    sale_price_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='سعر البيع (USD)'
     )
     wholesale_price = models.DecimalField(
         max_digits=15,
@@ -296,11 +324,25 @@ class Product(BaseModel):
         default=Decimal('0.00'),
         verbose_name='سعر الجملة'
     )
+    wholesale_price_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='سعر الجملة (USD)'
+    )
     minimum_price = models.DecimalField(
         max_digits=15,
         decimal_places=2,
         default=Decimal('0.00'),
         verbose_name='أقل سعر بيع'
+    )
+    minimum_price_usd = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        verbose_name='أقل سعر بيع (USD)'
     )
     
     # Tax
@@ -389,17 +431,20 @@ class Product(BaseModel):
     @property
     def profit_margin(self):
         """Calculate profit margin percentage."""
-        if self.cost_price and self.cost_price > 0:
-            return ((self.sale_price - self.cost_price) / self.cost_price) * 100
+        cost = self.cost_price_usd if self.cost_price_usd is not None and self.cost_price_usd > 0 else self.cost_price
+        sale = self.sale_price_usd if self.sale_price_usd is not None and self.sale_price_usd > 0 else self.sale_price
+        if cost and cost > 0:
+            return ((sale - cost) / cost) * 100
         return Decimal('0.00')
 
     @property
     def price_with_tax(self):
         """Calculate sale price including tax."""
+        sale = self.sale_price_usd if self.sale_price_usd is not None and self.sale_price_usd > 0 else self.sale_price
         if self.is_taxable:
-            tax_amount = (self.sale_price * self.tax_rate) / 100
-            return self.sale_price + tax_amount
-        return self.sale_price
+            tax_amount = (sale * self.tax_rate) / 100
+            return sale + tax_amount
+        return sale
 
 
 class Stock(TimeStampedModel):

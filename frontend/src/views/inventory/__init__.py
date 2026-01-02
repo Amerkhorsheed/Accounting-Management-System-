@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.tables import DataTable
 from ...widgets.forms import FormField, FormDialog
 from ...widgets.dialogs import MessageDialog, ConfirmDialog
@@ -123,22 +123,32 @@ class ProductDialog(QDialog):
         
         # Cost price field
         self.cost_price_field = FormField(
-            label='سعر التكلفة',
+            label='سعر التكلفة (USD)',
             field_type='number',
             required=True
         )
-        if 'cost_price' in self.data:
-            self.cost_price_field.set_value(float(self.data['cost_price'] or 0))
+        if 'cost_price_usd' in self.data and self.data.get('cost_price_usd') is not None:
+            self.cost_price_field.set_value(float(self.data['cost_price_usd'] or 0))
+        elif 'cost_price' in self.data:
+            try:
+                self.cost_price_field.set_value(float(config.convert_to_secondary(float(self.data['cost_price'] or 0))))
+            except Exception:
+                self.cost_price_field.set_value(0)
         form_layout.addWidget(self.cost_price_field)
         
         # Sale price field
         self.sale_price_field = FormField(
-            label='سعر البيع',
+            label='سعر البيع (USD)',
             field_type='number',
             required=True
         )
-        if 'sale_price' in self.data:
-            self.sale_price_field.set_value(float(self.data['sale_price'] or 0))
+        if 'sale_price_usd' in self.data and self.data.get('sale_price_usd') is not None:
+            self.sale_price_field.set_value(float(self.data['sale_price_usd'] or 0))
+        elif 'sale_price' in self.data:
+            try:
+                self.sale_price_field.set_value(float(config.convert_to_secondary(float(self.data['sale_price'] or 0))))
+            except Exception:
+                self.sale_price_field.set_value(0)
         form_layout.addWidget(self.sale_price_field)
         
         # Minimum stock field
@@ -265,14 +275,18 @@ class ProductDialog(QDialog):
         
         # Collect product data
         is_taxable = self.is_taxable_field.get_value()
+        cost_price_usd = self.cost_price_field.get_value()
+        sale_price_usd = self.sale_price_field.get_value()
         product_data = {
             'name': self.name_field.get_value(),
             'name_en': self.name_en_field.get_value() or None,
             'code': self.code_field.get_value() or None,
             'barcode': self.barcode_field.get_value() or None,
             'category': self.category_field.get_value(),
-            'cost_price': self.cost_price_field.get_value(),
-            'sale_price': self.sale_price_field.get_value(),
+            'cost_price_usd': cost_price_usd,
+            'sale_price_usd': sale_price_usd,
+            'cost_price': config.convert_to_primary(float(cost_price_usd or 0), from_currency='USD'),
+            'sale_price': config.convert_to_primary(float(sale_price_usd or 0), from_currency='USD'),
             'minimum_stock': self.minimum_stock_field.get_value() or 0,
             'description': self.description_field.get_value() or None,
             'is_taxable': is_taxable,
@@ -330,8 +344,8 @@ class ProductsView(QWidget):
             {'key': 'barcode', 'label': 'الباركود', 'type': 'text'},
             {'key': 'name', 'label': 'اسم المنتج', 'type': 'text'},
             {'key': 'category_name', 'label': 'الفئة', 'type': 'text'},
-            {'key': 'cost_price', 'label': 'سعر التكلفة', 'type': 'currency'},
-            {'key': 'sale_price', 'label': 'سعر البيع', 'type': 'currency'},
+            {'key': 'cost_price_usd', 'label': 'سعر التكلفة (USD)', 'type': 'currency'},
+            {'key': 'sale_price_usd', 'label': 'سعر البيع (USD)', 'type': 'currency'},
             {'key': 'total_stock', 'label': 'المخزون', 'type': 'stock'},
         ]
         
@@ -406,7 +420,7 @@ class ProductsView(QWidget):
         # Only send valid fields
         valid_fields = [
             'name', 'name_en', 'code', 'barcode', 'category', 'unit',
-            'cost_price', 'sale_price', 'minimum_stock', 'description',
+            'cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'description',
             'wholesale_price', 'minimum_price', 'is_taxable', 'tax_rate',
             'track_stock', 'maximum_stock', 'reorder_point', 'brand',
             'model', 'notes', 'is_active', 'product_type'
@@ -420,7 +434,7 @@ class ProductsView(QWidget):
                 if v is None:
                     continue
                 # Convert string numbers to proper types
-                if k in ['cost_price', 'sale_price', 'minimum_stock', 'wholesale_price', 
+                if k in ['cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'wholesale_price', 
                          'minimum_price', 'tax_rate', 'maximum_stock', 'reorder_point']:
                     if v is not None and v != '':
                         try:
@@ -448,7 +462,7 @@ class ProductsView(QWidget):
         # Prepare product data
         valid_fields = [
             'name', 'name_en', 'code', 'barcode', 'category', 'unit',
-            'cost_price', 'sale_price', 'minimum_stock', 'description',
+            'cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'description',
             'wholesale_price', 'minimum_price', 'is_taxable', 'tax_rate',
             'track_stock', 'maximum_stock', 'reorder_point', 'brand',
             'model', 'notes', 'is_active', 'product_type'
@@ -460,7 +474,7 @@ class ProductsView(QWidget):
                     continue
                 if v is None:
                     continue
-                if k in ['cost_price', 'sale_price', 'minimum_stock', 'wholesale_price', 
+                if k in ['cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'wholesale_price', 
                          'minimum_price', 'tax_rate', 'maximum_stock', 'reorder_point']:
                     if v is not None and v != '':
                         try:
@@ -492,8 +506,10 @@ class ProductsView(QWidget):
                     'unit': pu.get('unit') or pu.get('unit_id'),
                     'conversion_factor': float(pu.get('conversion_factor', 1)),
                     'is_base_unit': pu.get('is_base_unit', False),
-                    'sale_price': float(pu.get('sale_price', 0)),
-                    'cost_price': float(pu.get('cost_price', 0)),
+                    'sale_price_usd': float(pu.get('sale_price_usd', 0) or 0),
+                    'cost_price_usd': float(pu.get('cost_price_usd', 0) or 0),
+                    'sale_price': float(pu.get('sale_price', 0) or 0),
+                    'cost_price': float(pu.get('cost_price', 0) or 0),
                     'barcode': pu.get('barcode'),
                 }
                 try:
@@ -510,7 +526,7 @@ class ProductsView(QWidget):
         # Only send editable fields, remove read-only fields
         editable_fields = [
             'name', 'name_en', 'code', 'barcode', 'category', 'unit',
-            'cost_price', 'sale_price', 'minimum_stock', 'description',
+            'cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'description',
             'wholesale_price', 'minimum_price', 'is_taxable', 'tax_rate',
             'track_stock', 'maximum_stock', 'reorder_point', 'brand',
             'model', 'notes', 'is_active', 'product_type'
@@ -522,7 +538,7 @@ class ProductsView(QWidget):
                 if v == '' and k not in ['name']:
                     continue
                 # Convert string numbers to proper types
-                if k in ['cost_price', 'sale_price', 'minimum_stock', 'wholesale_price', 
+                if k in ['cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'wholesale_price', 
                          'minimum_price', 'tax_rate', 'maximum_stock', 'reorder_point']:
                     if v is not None and v != '':
                         try:
@@ -552,7 +568,7 @@ class ProductsView(QWidget):
         # Update product data
         editable_fields = [
             'name', 'name_en', 'code', 'barcode', 'category', 'unit',
-            'cost_price', 'sale_price', 'minimum_stock', 'description',
+            'cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'description',
             'wholesale_price', 'minimum_price', 'is_taxable', 'tax_rate',
             'track_stock', 'maximum_stock', 'reorder_point', 'brand',
             'model', 'notes', 'is_active', 'product_type'
@@ -562,7 +578,7 @@ class ProductsView(QWidget):
             if k in editable_fields:
                 if v == '' and k not in ['name']:
                     continue
-                if k in ['cost_price', 'sale_price', 'minimum_stock', 'wholesale_price', 
+                if k in ['cost_price', 'cost_price_usd', 'sale_price', 'sale_price_usd', 'minimum_stock', 'wholesale_price', 
                          'minimum_price', 'tax_rate', 'maximum_stock', 'reorder_point']:
                     if v is not None and v != '':
                         try:
@@ -602,8 +618,10 @@ class ProductsView(QWidget):
                         'unit': unit_id,
                         'conversion_factor': float(pu.get('conversion_factor', 1)),
                         'is_base_unit': pu.get('is_base_unit', False),
-                        'sale_price': float(pu.get('sale_price', 0)),
-                        'cost_price': float(pu.get('cost_price', 0)),
+                        'sale_price_usd': float(pu.get('sale_price_usd', 0) or 0),
+                        'cost_price_usd': float(pu.get('cost_price_usd', 0) or 0),
+                        'sale_price': float(pu.get('sale_price', 0) or 0),
+                        'cost_price': float(pu.get('cost_price', 0) or 0),
                         'barcode': pu.get('barcode'),
                     }
                     try:
@@ -615,8 +633,10 @@ class ProductsView(QWidget):
                     unit_data = {
                         'conversion_factor': float(pu.get('conversion_factor', 1)),
                         'is_base_unit': pu.get('is_base_unit', False),
-                        'sale_price': float(pu.get('sale_price', 0)),
-                        'cost_price': float(pu.get('cost_price', 0)),
+                        'sale_price_usd': float(pu.get('sale_price_usd', 0) or 0),
+                        'cost_price_usd': float(pu.get('cost_price_usd', 0) or 0),
+                        'sale_price': float(pu.get('sale_price', 0) or 0),
+                        'cost_price': float(pu.get('cost_price', 0) or 0),
                         'barcode': pu.get('barcode'),
                     }
                     try:

@@ -11,14 +11,15 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QGroupBox, QFormLayout, QPushButton,
     QScrollArea, QComboBox, QDoubleSpinBox, QCheckBox,
-    QStackedWidget, QFrame
+    QStackedWidget, QFrame, QDateEdit
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QFont
 
 from ...config import Colors, Fonts, config
 from ...widgets.dialogs import MessageDialog
 from ...utils.error_handler import handle_ui_error
+from ...services.api import api, ApiException
 from .units import UnitsManagementView, UnitsView
 from .categories import CategoriesView
 from .warehouses import WarehousesView, WarehousesManagementView
@@ -115,6 +116,16 @@ class GeneralSettingsWidget(QWidget):
             '€ - اليورو',
         ])
         currency_layout.addRow("العملة الثانوية:", self.secondary_currency)
+
+        self.display_currency = QComboBox()
+        self.display_currency.addItem('USD - الدولار الأمريكي', 'USD')
+        self.display_currency.addItem('ل.س جديدة', 'SYP_NEW')
+        self.display_currency.addItem('ل.س قديمة', 'SYP_OLD')
+        current_display = config.DISPLAY_CURRENCY or 'USD'
+        display_idx = self.display_currency.findData(current_display)
+        if display_idx >= 0:
+            self.display_currency.setCurrentIndex(display_idx)
+        currency_layout.addRow("عملة العرض:", self.display_currency)
         
         exchange_row = QHBoxLayout()
         self.exchange_rate = QDoubleSpinBox()
@@ -136,8 +147,46 @@ class GeneralSettingsWidget(QWidget):
         self.show_dual_currency = QCheckBox("عرض السعر بالعملتين")
         self.show_dual_currency.setChecked(True)
         currency_layout.addRow("", self.show_dual_currency)
+
+        self._fx_syncing = False
+        self._daily_fx_id = None
+
+        fx_group = QGroupBox("سعر الصرف اليومي")
+        fx_layout = QFormLayout(fx_group)
+
+        self.fx_rate_date = QDateEdit()
+        self.fx_rate_date.setCalendarPopup(True)
+        self.fx_rate_date.setDisplayFormat('yyyy-MM-dd')
+        self.fx_rate_date.setDate(QDate.currentDate())
+        self.fx_rate_date.dateChanged.connect(self.load_daily_fx)
+        fx_layout.addRow("تاريخ سعر الصرف:", self.fx_rate_date)
+
+        self.usd_to_syp_new = QDoubleSpinBox()
+        self.usd_to_syp_new.setRange(0, 999999999999)
+        self.usd_to_syp_new.setDecimals(6)
+        self.usd_to_syp_new.setPrefix("1 $ = ")
+        self.usd_to_syp_new.setSuffix(" ل.س جديدة")
+        self.usd_to_syp_new.valueChanged.connect(self._on_fx_new_changed)
+        fx_layout.addRow("سعر الدولار (الجديدة):", self.usd_to_syp_new)
+
+        self.usd_to_syp_old = QDoubleSpinBox()
+        self.usd_to_syp_old.setRange(0, 99999999999999)
+        self.usd_to_syp_old.setDecimals(6)
+        self.usd_to_syp_old.setPrefix("1 $ = ")
+        self.usd_to_syp_old.setSuffix(" ل.س قديمة")
+        self.usd_to_syp_old.valueChanged.connect(self._on_fx_old_changed)
+        fx_layout.addRow("سعر الدولار (القديمة):", self.usd_to_syp_old)
+
+        fx_btn_row = QHBoxLayout()
+        fx_btn_row.addStretch()
+        self.save_fx_btn = QPushButton("حفظ سعر الصرف")
+        self.save_fx_btn.setStyleSheet(f"background: {Colors.PRIMARY}; color: white; border-radius: 4px; padding: 5px 15px;")
+        self.save_fx_btn.clicked.connect(self.save_daily_fx)
+        fx_btn_row.addWidget(self.save_fx_btn)
+        fx_layout.addRow("", fx_btn_row)
         
         layout.addWidget(currency_group)
+        layout.addWidget(fx_group)
         
         # Tax Settings
         tax_group = QGroupBox("إعدادات الضريبة")
@@ -233,6 +282,79 @@ class GeneralSettingsWidget(QWidget):
         rate = self.exchange_rate.value()
         config.update_exchange_rate(rate)
         MessageDialog.success(self, "نجاح", f"تم تحديث سعر الصرف: 1$ = {rate:,.2f} ل.س")
+
+    def _on_fx_new_changed(self, value: float):
+        if self._fx_syncing:
+            return
+        self._fx_syncing = True
+        try:
+            self.usd_to_syp_old.setValue(value * 100.0)
+            config.update_exchange_rate(value)
+            self.exchange_rate.setValue(value)
+        finally:
+            self._fx_syncing = False
+
+    def _on_fx_old_changed(self, value: float):
+        if self._fx_syncing:
+            return
+        self._fx_syncing = True
+        try:
+            new_value = value / 100.0 if value else 0.0
+            self.usd_to_syp_new.setValue(new_value)
+            config.update_exchange_rate(new_value)
+            self.exchange_rate.setValue(new_value)
+        finally:
+            self._fx_syncing = False
+
+    @handle_ui_error
+    def load_daily_fx(self, qdate=None):
+        try:
+            rate_date = self.fx_rate_date.date().toString('yyyy-MM-dd')
+            resp = api.get_daily_exchange_rates({'rate_date': rate_date})
+            if isinstance(resp, dict) and 'results' in resp:
+                results = resp.get('results') or []
+            else:
+                results = resp if isinstance(resp, list) else []
+
+            fx = results[0] if results else None
+            self._daily_fx_id = fx.get('id') if fx else None
+
+            if fx:
+                old = float(fx.get('usd_to_syp_old') or 0)
+                new = float(fx.get('usd_to_syp_new') or 0)
+                self._fx_syncing = True
+                try:
+                    self.usd_to_syp_old.setValue(old)
+                    self.usd_to_syp_new.setValue(new)
+                    config.update_exchange_rate(new)
+                    self.exchange_rate.setValue(new)
+                finally:
+                    self._fx_syncing = False
+            else:
+                self._daily_fx_id = None
+        except ApiException as e:
+            MessageDialog.warning(self, "تنبيه", f"تعذر تحميل سعر الصرف: {str(e)}")
+
+    @handle_ui_error
+    def save_daily_fx(self):
+        rate_date = self.fx_rate_date.date().toString('yyyy-MM-dd')
+        payload = {
+            'rate_date': rate_date,
+            'usd_to_syp_old': f"{self.usd_to_syp_old.value():.6f}",
+            'usd_to_syp_new': f"{self.usd_to_syp_new.value():.6f}",
+        }
+        try:
+            if self._daily_fx_id:
+                api.update_daily_exchange_rate(self._daily_fx_id, payload)
+            else:
+                created = api.create_daily_exchange_rate(payload)
+                self._daily_fx_id = created.get('id') if isinstance(created, dict) else None
+
+            config.update_exchange_rate(self.usd_to_syp_new.value())
+            self.exchange_rate.setValue(self.usd_to_syp_new.value())
+            MessageDialog.success(self, "نجاح", "تم حفظ سعر الصرف اليومي")
+        except ApiException as e:
+            MessageDialog.error(self, "خطأ", f"فشل حفظ سعر الصرف: {str(e)}")
     
     @handle_ui_error
     def save_settings(self):
@@ -247,6 +369,8 @@ class GeneralSettingsWidget(QWidget):
         config.TAX_RATE = self.tax_rate.value()
         
         config.update_exchange_rate(self.exchange_rate.value())
+
+        config.DISPLAY_CURRENCY = self.display_currency.currentData() or 'USD'
         
         config.API_BASE_URL = self.api_url.text()
         
@@ -268,6 +392,10 @@ class GeneralSettingsWidget(QWidget):
         self.tax_enabled.setChecked(config.TAX_ENABLED)
         self.tax_rate.setValue(config.TAX_RATE)
         self.exchange_rate.setValue(config.SECONDARY_CURRENCY.exchange_rate)
+        display_idx = self.display_currency.findData(config.DISPLAY_CURRENCY or 'USD')
+        if display_idx >= 0:
+            self.display_currency.setCurrentIndex(display_idx)
+        self.load_daily_fx()
 
 
 

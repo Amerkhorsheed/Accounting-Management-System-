@@ -15,7 +15,7 @@ class SupplierListSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             'id', 'code', 'name', 'name_en', 'phone', 'mobile', 'email',
-            'current_balance', 'credit_limit', 'is_active'
+            'current_balance', 'current_balance_usd', 'credit_limit', 'is_active'
         ]
 
 
@@ -30,7 +30,7 @@ class SupplierDetailSerializer(serializers.ModelSerializer):
             'id', 'code', 'name', 'name_en', 'tax_number', 'commercial_register',
             'contact_person', 'phone', 'mobile', 'email', 'fax', 'website',
             'address', 'city', 'region', 'postal_code', 'country', 'full_address',
-            'payment_terms', 'credit_limit', 'opening_balance', 'current_balance',
+            'payment_terms', 'credit_limit', 'opening_balance', 'opening_balance_usd', 'current_balance', 'current_balance_usd',
             'notes', 'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'code', 'current_balance', 'created_at', 'updated_at']
@@ -108,7 +108,10 @@ class PurchaseOrderListSerializer(serializers.ModelSerializer):
             'id', 'order_number', 'supplier', 'supplier_name', 'supplier_code',
             'warehouse', 'warehouse_name', 'order_date', 'expected_date',
             'status', 'status_display', 'subtotal', 'discount_amount',
-            'tax_amount', 'total_amount', 'paid_amount', 'remaining_amount'
+            'tax_amount', 'total_amount', 'total_amount_usd',
+            'paid_amount', 'paid_amount_usd',
+            'remaining_amount', 'remaining_amount_usd',
+            'transaction_currency'
         ]
 
 
@@ -129,8 +132,11 @@ class PurchaseOrderDetailSerializer(serializers.ModelSerializer):
             'id', 'order_number', 'supplier', 'supplier_name',
             'warehouse', 'warehouse_name',
             'order_date', 'expected_date', 'status', 'status_display',
-            'subtotal', 'discount_amount', 'tax_amount', 'total_amount',
-            'paid_amount', 'remaining_amount',
+            'subtotal', 'discount_amount', 'tax_amount',
+            'total_amount', 'total_amount_usd',
+            'paid_amount', 'paid_amount_usd',
+            'remaining_amount', 'remaining_amount_usd',
+            'transaction_currency', 'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
             'reference', 'notes',
             'created_by', 'created_by_name', 'created_at',
             'approved_by', 'approved_by_name', 'approved_at',
@@ -167,7 +173,9 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
         model = PurchaseOrder
         fields = [
             'supplier', 'warehouse', 'order_date', 'expected_date',
-            'discount_amount', 'reference', 'notes', 'items', 'confirm'
+            'discount_amount',
+            'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
+            'reference', 'notes', 'items', 'confirm'
         ]
 
     def validate_items(self, value):
@@ -178,125 +186,68 @@ class PurchaseOrderCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         from django.db import transaction
-        from django.utils import timezone
         from decimal import Decimal
-        from apps.inventory.services import InventoryService
-        from apps.inventory.models import StockMovement, ProductUnit
+        from .services import PurchaseService
         
         items_data = validated_data.pop('items')
-        # Pop non-model fields
         confirm = validated_data.pop('confirm', False)
-        
+        user = self.context.get('request').user if self.context.get('request') else None
+
+        service_items = []
+        for item_data in items_data:
+            product = item_data.get('product')
+            product_unit = item_data.get('product_unit')
+
+            if 'discount_percent' not in item_data or item_data.get('discount_percent') is None:
+                item_data['discount_percent'] = Decimal('0.00')
+            item_data['tax_rate'] = Decimal('0.00')
+
+            service_items.append(
+                {
+                    'product_id': product.id,
+                    'product_unit_id': product_unit.id if product_unit else None,
+                    'quantity': item_data.get('quantity'),
+                    'unit_price': item_data.get('unit_price'),
+                    'discount_percent': item_data.get('discount_percent'),
+                    'tax_rate': item_data.get('tax_rate'),
+                    'notes': item_data.get('notes'),
+                }
+            )
+
         with transaction.atomic():
-            # Create the purchase order
-            purchase_order = PurchaseOrder.objects.create(**validated_data)
-            user = self.context.get('request').user if self.context.get('request') else None
-            
-            # Create all items
-            for item_data in items_data:
-                product = item_data.get('product')
-                product_unit = item_data.get('product_unit')
-                quantity = Decimal(str(item_data.get('quantity', 0)))
-                
-                # Calculate base_quantity based on product_unit or default to base unit
-                # Requirements: 4.4, 4.6
-                if product_unit:
-                    base_quantity = product_unit.convert_to_base(quantity)
-                else:
-                    # Default to base unit - find the base unit for this product
-                    base_unit = ProductUnit.objects.filter(
-                        product=product,
-                        is_base_unit=True,
-                        is_deleted=False
-                    ).first()
-                    
-                    if base_unit:
-                        base_quantity = base_unit.convert_to_base(quantity)
-                    else:
-                        # No ProductUnit configured, use quantity as-is (legacy behavior)
-                        base_quantity = quantity
-                
-                # Set default discount_percent if not provided
-                if 'discount_percent' not in item_data or item_data.get('discount_percent') is None:
-                    item_data['discount_percent'] = Decimal('0.00')
-                
-                # Set default tax_rate from product if not provided
-                if 'tax_rate' not in item_data or item_data.get('tax_rate') is None:
-                    if product and product.is_taxable:
-                        item_data['tax_rate'] = product.tax_rate
-                    else:
-                        item_data['tax_rate'] = Decimal('15.00')  # Default tax rate
-                
-                # Add base_quantity to item_data
-                item_data['base_quantity'] = base_quantity
-                
-                PurchaseOrderItem.objects.create(purchase_order=purchase_order, **item_data)
-            
-            # Calculate totals after all items are created
-            purchase_order.calculate_totals()
-            
-            # Auto-confirm: approve and receive goods immediately
+            purchase_order = PurchaseService.create_purchase_order(
+                supplier_id=validated_data['supplier'].id,
+                warehouse_id=validated_data['warehouse'].id,
+                order_date=validated_data['order_date'],
+                items=service_items,
+                discount_amount=validated_data.get('discount_amount', Decimal('0.00')),
+                expected_date=validated_data.get('expected_date'),
+                fx_rate_date=validated_data.get('fx_rate_date'),
+                usd_to_syp_old_snapshot=validated_data.get('usd_to_syp_old_snapshot'),
+                usd_to_syp_new_snapshot=validated_data.get('usd_to_syp_new_snapshot'),
+                reference=validated_data.get('reference'),
+                notes=validated_data.get('notes'),
+                user=user
+            )
+
             if confirm:
-                # Approve the order
-                purchase_order.status = PurchaseOrder.Status.APPROVED
-                purchase_order.approved_by = user
-                purchase_order.approved_at = timezone.now()
-                purchase_order.save()
-                
-                # Create GRN and receive all items
-                grn = GoodsReceivedNote.objects.create(
-                    purchase_order=purchase_order,
+                PurchaseService.approve_purchase_order(purchase_order.id, user=user)
+                purchase_order.refresh_from_db()
+
+                PurchaseService.receive_goods(
+                    po_id=purchase_order.id,
                     received_date=purchase_order.order_date,
-                    received_by=user,
-                    created_by=user
+                    items=[
+                        {'po_item_id': po_item.id, 'quantity': po_item.quantity}
+                        for po_item in purchase_order.items.all()
+                    ],
+                    supplier_invoice_no=None,
+                    notes=None,
+                    user=user
                 )
-                
-                total_received_value = Decimal('0')
-                
-                # Receive all items and update stock
-                for po_item in purchase_order.items.all():
-                    # Create GRN item
-                    GRNItem.objects.create(
-                        grn=grn,
-                        po_item=po_item,
-                        product=po_item.product,
-                        quantity_received=po_item.quantity,
-                        created_by=user
-                    )
-                    
-                    # Mark as fully received
-                    po_item.received_quantity = po_item.quantity
-                    po_item.save()
-                    
-                    # Calculate value for supplier balance
-                    total_received_value += po_item.quantity * po_item.unit_price
-                    
-                    # Use base_quantity for stock addition (Requirements: 4.4)
-                    stock_quantity = po_item.base_quantity if po_item.base_quantity else po_item.quantity
-                    
-                    # Add stock using base_quantity
-                    InventoryService.add_stock(
-                        product_id=po_item.product_id,
-                        warehouse_id=purchase_order.warehouse_id,
-                        quantity=stock_quantity,
-                        unit_cost=po_item.unit_price,
-                        source_type=StockMovement.SourceType.PURCHASE,
-                        reference_number=grn.grn_number,
-                        reference_type='GRN',
-                        reference_id=grn.id,
-                        user=user,
-                        notes=f"استلام من أمر الشراء {purchase_order.order_number}"
-                    )
-                
-                # Update PO status to received
-                purchase_order.status = PurchaseOrder.Status.RECEIVED
-                purchase_order.save()
-                
-                # Update supplier balance (increase what we owe them)
-                supplier = purchase_order.supplier
-                supplier.current_balance += total_received_value
-                supplier.save()
-        
+
+                purchase_order.refresh_from_db()
+
         return purchase_order
 
 
@@ -337,7 +288,9 @@ class SupplierPaymentSerializer(serializers.ModelSerializer):
         model = SupplierPayment
         fields = [
             'id', 'payment_number', 'supplier', 'supplier_name',
-            'purchase_order', 'payment_date', 'amount',
+            'purchase_order', 'payment_date',
+            'transaction_currency', 'fx_rate_date', 'usd_to_syp_old_snapshot', 'usd_to_syp_new_snapshot',
+            'amount', 'amount_usd',
             'payment_method', 'payment_method_display',
             'reference', 'notes', 'created_at'
         ]

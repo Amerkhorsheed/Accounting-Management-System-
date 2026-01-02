@@ -165,3 +165,75 @@ class Singleton:
         if cls not in cls._instances:
             cls._instances[cls] = super().__call__(*args, **kwargs)
         return cls._instances[cls]
+
+
+def get_daily_fx(rate_date: date):
+    from apps.core.settings_models import DailyExchangeRate
+    from apps.core.exceptions import ValidationException
+
+    fx = DailyExchangeRate.objects.filter(rate_date=rate_date).first()
+    if not fx:
+        raise ValidationException('سعر الصرف لليوم غير موجود', field='fx_rate_date')
+    return fx.usd_to_syp_old, fx.usd_to_syp_new
+
+
+def normalize_fx(usd_to_syp_old: Decimal = None, usd_to_syp_new: Decimal = None):
+    from apps.core.exceptions import ValidationException
+
+    if usd_to_syp_old is None and usd_to_syp_new is None:
+        raise ValidationException('سعر الصرف غير محدد', field='exchange_rate')
+
+    if usd_to_syp_old is None and usd_to_syp_new is not None:
+        if usd_to_syp_new <= 0:
+            raise ValidationException('سعر صرف الليرة الجديدة غير صالح', field='usd_to_syp_new_snapshot')
+        usd_to_syp_old = usd_to_syp_new * Decimal('100')
+
+    if usd_to_syp_new is None and usd_to_syp_old is not None:
+        if usd_to_syp_old <= 0:
+            raise ValidationException('سعر صرف الليرة القديمة غير صالح', field='usd_to_syp_old_snapshot')
+        usd_to_syp_new = usd_to_syp_old / Decimal('100')
+
+    if usd_to_syp_old is not None and usd_to_syp_old <= 0:
+        raise ValidationException('سعر صرف الليرة القديمة غير صالح', field='usd_to_syp_old_snapshot')
+    if usd_to_syp_new is not None and usd_to_syp_new <= 0:
+        raise ValidationException('سعر صرف الليرة الجديدة غير صالح', field='usd_to_syp_new_snapshot')
+
+    return usd_to_syp_old, usd_to_syp_new
+
+
+def to_usd(amount: Decimal, currency: str, usd_to_syp_old: Decimal = None, usd_to_syp_new: Decimal = None) -> Decimal:
+    if amount is None:
+        return Decimal('0.00')
+
+    if currency == 'USD':
+        return round_decimal(amount, 2)
+
+    usd_to_syp_old, usd_to_syp_new = normalize_fx(usd_to_syp_old, usd_to_syp_new)
+
+    if currency == 'SYP_OLD':
+        return round_decimal(Decimal(amount) / usd_to_syp_old, 2)
+    if currency == 'SYP_NEW':
+        return round_decimal(Decimal(amount) / usd_to_syp_new, 2)
+
+    from apps.core.exceptions import ValidationException
+
+    raise ValidationException('عملة غير مدعومة', field='transaction_currency')
+
+
+def from_usd(amount_usd: Decimal, currency: str, usd_to_syp_old: Decimal = None, usd_to_syp_new: Decimal = None) -> Decimal:
+    if amount_usd is None:
+        return Decimal('0.00')
+
+    if currency == 'USD':
+        return round_decimal(amount_usd, 2)
+
+    usd_to_syp_old, usd_to_syp_new = normalize_fx(usd_to_syp_old, usd_to_syp_new)
+
+    if currency == 'SYP_OLD':
+        return round_decimal(Decimal(amount_usd) * usd_to_syp_old, 2)
+    if currency == 'SYP_NEW':
+        return round_decimal(Decimal(amount_usd) * usd_to_syp_new, 2)
+
+    from apps.core.exceptions import ValidationException
+
+    raise ValidationException('عملة غير مدعومة', field='transaction_currency')

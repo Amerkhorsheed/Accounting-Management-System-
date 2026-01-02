@@ -403,6 +403,29 @@ class ApiService:
     def get_current_user(self) -> Dict:
         """Get current user info."""
         return self.get('auth/users/me/')
+
+    def get_app_context(self, rate_date: Optional[str] = None, strict_fx: bool = False) -> Dict:
+        params = {}
+        if rate_date:
+            params['rate_date'] = rate_date
+        if strict_fx:
+            params['strict_fx'] = 'true'
+        return self.get('core/app-context/', params or None)
+
+    def get_daily_exchange_rates(self, params: Dict = None) -> Dict:
+        return self.get('core/daily-exchange-rates/', params)
+
+    def get_daily_exchange_rate(self, id: int) -> Dict:
+        return self.get(f'core/daily-exchange-rates/{id}/')
+
+    def create_daily_exchange_rate(self, data: Dict) -> Dict:
+        return self.post('core/daily-exchange-rates/', data)
+
+    def update_daily_exchange_rate(self, id: int, data: Dict) -> Dict:
+        return self.patch(f'core/daily-exchange-rates/{id}/', data)
+
+    def delete_daily_exchange_rate(self, id: int) -> Dict:
+        return self.delete(f'core/daily-exchange-rates/{id}/')
     
     # Products endpoints
     def get_products(self, params: Dict = None) -> Dict:
@@ -537,6 +560,13 @@ class ApiService:
         
     def receive_goods(self, id: int, data: Dict) -> Dict:
         return self.post(f'purchases/orders/{id}/receive/', data)
+
+    # Supplier Payments endpoints
+    def get_supplier_payments(self, params: Dict = None) -> Dict:
+        return self.get('purchases/payments/', params)
+
+    def create_supplier_payment(self, data: Dict) -> Dict:
+        return self.post('purchases/payments/', data)
     
     # Expenses endpoints
     def get_expenses(self, params: Dict = None) -> Dict:

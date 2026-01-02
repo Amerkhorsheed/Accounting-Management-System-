@@ -40,6 +40,8 @@ class AppConfig:
         exchange_rate=15000.0,  # 1 USD = 15000 SYP (user configurable)
         decimal_places=2
     ))
+
+    DISPLAY_CURRENCY: str = 'USD'  # 'USD', 'SYP_NEW', 'SYP_OLD'
     
     # Tax Settings (Configurable - can be 0 for no tax)
     TAX_RATE: float = 0.0  # No tax by default
@@ -65,12 +67,69 @@ class AppConfig:
     BASE_DIR: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     RESOURCES_DIR: str = os.path.join(BASE_DIR, 'src', 'resources')
     
+    def get_display_currency_label(self) -> str:
+        if self.DISPLAY_CURRENCY == 'USD':
+            return 'USD'
+        if self.DISPLAY_CURRENCY == 'SYP_NEW':
+            return 'ل.س جديدة'
+        return 'ل.س قديمة'
+
+    def get_usd_to_syp_new_rate(self) -> float:
+        return float(self.SECONDARY_CURRENCY.exchange_rate or 0)
+
+    def get_usd_to_syp_old_rate(self) -> float:
+        rate_new = self.get_usd_to_syp_new_rate()
+        return rate_new * 100.0
+
+    def convert_from_usd(self, amount_usd: float, to_currency: str) -> float:
+        amount_usd = float(amount_usd or 0)
+        if to_currency == 'USD':
+            return amount_usd
+        if to_currency == 'SYP_NEW':
+            rate = self.get_usd_to_syp_new_rate()
+            return amount_usd * rate if rate else amount_usd
+        if to_currency == 'SYP_OLD':
+            rate = self.get_usd_to_syp_old_rate()
+            return amount_usd * rate if rate else amount_usd
+        return amount_usd
+
+    def convert_to_usd(self, amount: float, from_currency: str) -> float:
+        amount = float(amount or 0)
+        from_currency = from_currency or 'USD'
+        if from_currency == 'USD':
+            return amount
+        if from_currency == 'SYP_NEW':
+            rate = self.get_usd_to_syp_new_rate()
+            return (amount / rate) if rate else amount
+        if from_currency == 'SYP_OLD':
+            rate = self.get_usd_to_syp_old_rate()
+            return (amount / rate) if rate else amount
+        return amount
+
+    def format_amount(self, amount: float, currency: str) -> str:
+        amount = float(amount or 0)
+        if currency == 'USD':
+            return f"${amount:,.2f}"
+        if currency == 'SYP_NEW':
+            return f"{amount:,.0f} ل.س جديدة"
+        if currency == 'SYP_OLD':
+            return f"{amount:,.0f} ل.س قديمة"
+        return f"{amount:,.2f}"
+
+    def format_usd(self, amount_usd: float) -> str:
+        to_currency = self.DISPLAY_CURRENCY or 'USD'
+        converted = self.convert_from_usd(amount_usd, to_currency)
+        return self.format_amount(converted, to_currency)
+
     def format_currency(self, amount: float, currency: str = None) -> str:
         """Format amount with currency symbol."""
-        if currency == 'USD' or currency == '$':
-            return f"${amount:,.2f}"
-        else:
-            return f"{amount:,.0f} ل.س"
+        if currency in ('USD', '$'):
+            return f"${float(amount or 0):,.2f}"
+        if currency in ('SYP_NEW',):
+            return f"{float(amount or 0):,.0f} ل.س جديدة"
+        if currency in ('SYP_OLD',):
+            return f"{float(amount or 0):,.0f} ل.س قديمة"
+        return f"{float(amount or 0):,.0f} ل.س"
     
     def convert_to_primary(self, amount: float, from_currency: str = 'USD') -> float:
         """Convert amount to primary currency (SYP)."""
@@ -102,6 +161,7 @@ class AppConfig:
             'TAX_RATE': self.TAX_RATE,
             'TAX_ENABLED': self.TAX_ENABLED,
             'EXCHANGE_RATE': self.SECONDARY_CURRENCY.exchange_rate,
+            'DISPLAY_CURRENCY': self.DISPLAY_CURRENCY,
             'DEFAULT_PRINTER': self.DEFAULT_PRINTER,
             'RECEIPT_PRINTER': self.RECEIPT_PRINTER,
             'RECEIPT_WIDTH': self.RECEIPT_WIDTH,
@@ -133,6 +193,7 @@ class AppConfig:
                 self.TAX_RATE = data.get('TAX_RATE', self.TAX_RATE)
                 self.TAX_ENABLED = data.get('TAX_ENABLED', self.TAX_ENABLED)
                 self.SECONDARY_CURRENCY.exchange_rate = data.get('EXCHANGE_RATE', self.SECONDARY_CURRENCY.exchange_rate)
+                self.DISPLAY_CURRENCY = data.get('DISPLAY_CURRENCY', self.DISPLAY_CURRENCY)
                 self.DEFAULT_PRINTER = data.get('DEFAULT_PRINTER', self.DEFAULT_PRINTER)
                 self.RECEIPT_PRINTER = data.get('RECEIPT_PRINTER', self.RECEIPT_PRINTER)
                 self.RECEIPT_WIDTH = data.get('RECEIPT_WIDTH', self.RECEIPT_WIDTH)

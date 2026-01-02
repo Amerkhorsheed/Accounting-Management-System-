@@ -251,6 +251,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
             amount=data['amount'],
             payment_method=data['payment_method'],
             invoice_id=data.get('invoice').id if data.get('invoice') else None,
+            transaction_currency=data.get('transaction_currency') or 'SYP_OLD',
+            fx_rate_date=data.get('fx_rate_date'),
+            usd_to_syp_old_snapshot=data.get('usd_to_syp_old_snapshot'),
+            usd_to_syp_new_snapshot=data.get('usd_to_syp_new_snapshot'),
             reference=data.get('reference'),
             notes=data.get('notes'),
             user=request.user
@@ -342,6 +346,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
             amount=data['amount'],
             payment_method=data['payment_method'],
             invoice_id=None,  # No single invoice - using allocations
+            transaction_currency=data.get('transaction_currency') or 'SYP_OLD',
+            fx_rate_date=data.get('fx_rate_date'),
+            usd_to_syp_old_snapshot=data.get('usd_to_syp_old_snapshot'),
+            usd_to_syp_new_snapshot=data.get('usd_to_syp_new_snapshot'),
             reference=data.get('reference'),
             notes=data.get('notes'),
             user=request.user

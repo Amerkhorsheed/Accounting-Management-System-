@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QCursor
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.cards import StatCard, Card
 from ...services.api import api, ApiException
 from ...utils.error_handler import handle_ui_error
@@ -287,35 +287,35 @@ class DashboardView(QWidget):
         if 'sales' in data:
             sales_data = data['sales']
             if isinstance(sales_data, dict):
-                self.sales_card.update_value(f"{float(sales_data.get('total', 0)):,.2f} ل.س")
+                self.sales_card.update_value(config.format_usd(float(sales_data.get('total_usd', sales_data.get('total', 0)) or 0)))
                 # Update invoice count from sales count
                 self.invoices_card.update_value(str(sales_data.get('count', 0)))
             else:
-                self.sales_card.update_value(f"{float(sales_data):,.2f} ل.س")
+                self.sales_card.update_value(config.format_usd(float(sales_data or 0)))
         
         # Purchases data
         if 'purchases' in data:
             purchases_data = data['purchases']
             if isinstance(purchases_data, dict):
-                self.purchases_card.update_value(f"{float(purchases_data.get('total', 0)):,.2f} ل.س")
+                self.purchases_card.update_value(config.format_usd(float(purchases_data.get('total_usd', purchases_data.get('total', 0)) or 0)))
             else:
-                self.purchases_card.update_value(f"{float(purchases_data):,.2f} ل.س")
+                self.purchases_card.update_value(config.format_usd(float(purchases_data or 0)))
         
         # Expenses data
         if 'expenses' in data:
             expenses_data = data['expenses']
             if isinstance(expenses_data, dict):
-                self.expenses_card.update_value(f"{float(expenses_data.get('total', 0)):,.2f} ل.س")
+                self.expenses_card.update_value(config.format_usd(float(expenses_data.get('total_usd', expenses_data.get('total', 0)) or 0)))
             else:
-                self.expenses_card.update_value(f"{float(expenses_data):,.2f} ل.س")
+                self.expenses_card.update_value(config.format_usd(float(expenses_data or 0)))
         
         # Profit data
         if 'profit' in data:
             profit_data = data['profit']
             if isinstance(profit_data, dict):
-                self.profit_card.update_value(f"{float(profit_data.get('net', 0)):,.2f} ل.س")
+                self.profit_card.update_value(config.format_usd(float(profit_data.get('net_usd', profit_data.get('net', 0)) or 0)))
             else:
-                self.profit_card.update_value(f"{float(profit_data):,.2f} ل.س")
+                self.profit_card.update_value(config.format_usd(float(profit_data or 0)))
         
         # Counts data
         if 'counts' in data:
@@ -332,16 +332,16 @@ class DashboardView(QWidget):
             credit_data = data['credit']
             
             # Total receivables (Requirement 8.1)
-            receivables_total = float(credit_data.get('receivables_total', 0))
-            self.receivables_card.update_value(f"{receivables_total:,.2f} ل.س")
+            receivables_total = float(credit_data.get('receivables_total_usd', credit_data.get('receivables_total', 0)) or 0)
+            self.receivables_card.update_value(config.format_usd(receivables_total))
             
             # Customers with balance count (Requirement 8.2)
             customers_with_balance = int(credit_data.get('customers_with_balance', 0))
             self.customers_with_balance_card.update_value(str(customers_with_balance))
             
             # Total overdue amount (Requirement 8.3)
-            overdue_total = float(credit_data.get('overdue_total', 0))
-            self.overdue_card.update_value(f"{overdue_total:,.2f} ل.س")
+            overdue_total = float(credit_data.get('overdue_total_usd', credit_data.get('overdue_total', 0)) or 0)
+            self.overdue_card.update_value(config.format_usd(overdue_total))
         
         # Update top products
         if 'top_products' in data:
@@ -403,7 +403,7 @@ class DashboardView(QWidget):
             desc = QLabel(f"فاتورة رقم {activity.get('invoice_number', '')} - {activity.get('customer__name') or 'نقدي'}")
             row_layout.addWidget(desc, 1)
             
-            amount = QLabel(f"{float(activity.get('total_amount', 0)):,.2f} ر.س")
+            amount = QLabel(config.format_usd(float(activity.get('total_amount_usd', activity.get('total_amount', 0)) or 0)))
             amount.setStyleSheet(f"color: {Colors.SUCCESS}; font-weight: bold;")
             row_layout.addWidget(amount)
             

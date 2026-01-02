@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 from apps.core.exceptions import ValidationException, InvalidOperationException
 from apps.core.decorators import handle_service_error
+from apps.core.utils import get_daily_fx, normalize_fx, to_usd, from_usd
 from apps.inventory.services import InventoryService
 from apps.inventory.models import StockMovement
 from .models import (
@@ -28,6 +29,9 @@ class PurchaseService:
         items: List[Dict],
         discount_amount: Decimal = Decimal('0.00'),
         expected_date=None,
+        fx_rate_date=None,
+        usd_to_syp_old_snapshot: Decimal = None,
+        usd_to_syp_new_snapshot: Decimal = None,
         reference: str = None,
         notes: str = None,
         user=None
@@ -44,12 +48,24 @@ class PurchaseService:
         """
         from apps.inventory.models import ProductUnit
         
+        if usd_to_syp_old_snapshot is None and usd_to_syp_new_snapshot is None:
+            raise ValidationException('يجب إدخال سعر الصرف لأمر الشراء', field='usd_to_syp_old_snapshot')
+
+        usd_to_syp_old_snapshot, usd_to_syp_new_snapshot = normalize_fx(
+            usd_to_syp_old_snapshot,
+            usd_to_syp_new_snapshot
+        )
+
         purchase_order = PurchaseOrder.objects.create(
             supplier_id=supplier_id,
             warehouse_id=warehouse_id,
             order_date=order_date,
             expected_date=expected_date,
             discount_amount=discount_amount,
+            transaction_currency='USD',
+            fx_rate_date=fx_rate_date or order_date,
+            usd_to_syp_old_snapshot=usd_to_syp_old_snapshot,
+            usd_to_syp_new_snapshot=usd_to_syp_new_snapshot,
             reference=reference,
             notes=notes,
             status=PurchaseOrder.Status.DRAFT,
@@ -88,7 +104,7 @@ class PurchaseService:
                 base_quantity=base_quantity,
                 unit_price=item['unit_price'],
                 discount_percent=item.get('discount_percent', Decimal('0.00')),
-                tax_rate=item.get('tax_rate', Decimal('15.00')),
+                tax_rate=Decimal('0.00'),
                 notes=item.get('notes'),
                 created_by=user
             )
@@ -102,7 +118,7 @@ class PurchaseService:
     def approve_purchase_order(po_id: int, user=None) -> PurchaseOrder:
         """Approve a purchase order."""
         
-        purchase_order = PurchaseOrder.objects.get(id=po_id)
+        purchase_order = PurchaseOrder.objects.select_for_update().get(id=po_id)
         
         if purchase_order.status != PurchaseOrder.Status.DRAFT:
             raise InvalidOperationException(
@@ -176,6 +192,9 @@ class PurchaseService:
                 'لا يمكن استلام بضاعة لأمر شراء غير معتمد'
             )
         
+        if not purchase_order.usd_to_syp_old_snapshot or not purchase_order.usd_to_syp_new_snapshot:
+            raise ValidationException('يجب إدخال سعر الصرف لأمر الشراء قبل الاستلام', field='usd_to_syp_old_snapshot')
+
         # Validate items are provided
         if not items:
             raise ValidationException('يجب تحديد بنود للاستلام')
@@ -190,7 +209,7 @@ class PurchaseService:
             created_by=user
         )
         
-        total_received_value = Decimal('0')
+        total_received_value_usd = Decimal('0')
         
         for item_data in items:
             po_item = PurchaseOrderItem.objects.get(id=item_data['po_item_id'])
@@ -237,7 +256,7 @@ class PurchaseService:
             po_item.save()
             
             # Calculate value for supplier balance update
-            total_received_value += quantity * po_item.unit_price
+            total_received_value_usd += quantity * po_item.unit_price
             
             # Add stock using base_quantity
             InventoryService.add_stock(
@@ -268,9 +287,16 @@ class PurchaseService:
         purchase_order.save()
         
         # Update supplier balance (increase what we owe them)
-        supplier = purchase_order.supplier
-        supplier.current_balance += total_received_value
-        supplier.save()
+        supplier = Supplier.objects.select_for_update().get(id=purchase_order.supplier_id)
+        received_value_syp_old = from_usd(
+            total_received_value_usd,
+            'SYP_OLD',
+            usd_to_syp_old=purchase_order.usd_to_syp_old_snapshot,
+            usd_to_syp_new=purchase_order.usd_to_syp_new_snapshot
+        )
+        supplier.current_balance += received_value_syp_old
+        supplier.current_balance_usd += total_received_value_usd
+        supplier.save(update_fields=['current_balance', 'current_balance_usd'])
         
         return grn
 
@@ -283,17 +309,43 @@ class PurchaseService:
         amount: Decimal,
         payment_method: str,
         purchase_order_id: int = None,
+        transaction_currency: str = 'USD',
+        fx_rate_date=None,
+        usd_to_syp_old_snapshot: Decimal = None,
+        usd_to_syp_new_snapshot: Decimal = None,
         reference: str = None,
         notes: str = None,
         user=None
     ) -> SupplierPayment:
         """Record a payment to supplier."""
+
+        if usd_to_syp_old_snapshot is None and usd_to_syp_new_snapshot is None:
+            usd_to_syp_old_snapshot, usd_to_syp_new_snapshot = get_daily_fx(fx_rate_date or payment_date)
+        else:
+            usd_to_syp_old_snapshot, usd_to_syp_new_snapshot = normalize_fx(
+                usd_to_syp_old_snapshot,
+                usd_to_syp_new_snapshot
+            )
+
+        amount_usd = amount
+        if transaction_currency != 'USD':
+            amount_usd = to_usd(
+                amount,
+                transaction_currency,
+                usd_to_syp_old=usd_to_syp_old_snapshot,
+                usd_to_syp_new=usd_to_syp_new_snapshot
+            )
         
         payment = SupplierPayment.objects.create(
             supplier_id=supplier_id,
             purchase_order_id=purchase_order_id,
             payment_date=payment_date,
+            transaction_currency=transaction_currency,
+            fx_rate_date=fx_rate_date or payment_date,
+            usd_to_syp_old_snapshot=usd_to_syp_old_snapshot,
+            usd_to_syp_new_snapshot=usd_to_syp_new_snapshot,
             amount=amount,
+            amount_usd=amount_usd,
             payment_method=payment_method,
             reference=reference,
             notes=notes,
@@ -301,15 +353,29 @@ class PurchaseService:
         )
         
         # Update supplier balance
-        supplier = Supplier.objects.get(id=supplier_id)
-        supplier.current_balance -= amount
-        supplier.save()
+        supplier = Supplier.objects.select_for_update().get(id=supplier_id)
+
+        amount_syp_old = amount
+        if transaction_currency == 'SYP_NEW':
+            amount_syp_old = amount * Decimal('100')
+        elif transaction_currency == 'USD':
+            amount_syp_old = from_usd(
+                amount_usd,
+                'SYP_OLD',
+                usd_to_syp_old=usd_to_syp_old_snapshot,
+                usd_to_syp_new=usd_to_syp_new_snapshot
+            )
+
+        supplier.current_balance -= amount_syp_old
+        supplier.current_balance_usd -= amount_usd
+        supplier.save(update_fields=['current_balance', 'current_balance_usd'])
         
         # Update PO paid amount if applicable
         if purchase_order_id:
-            purchase_order = PurchaseOrder.objects.get(id=purchase_order_id)
-            purchase_order.paid_amount += amount
-            purchase_order.save()
+            purchase_order = PurchaseOrder.objects.select_for_update().get(id=purchase_order_id)
+            purchase_order.paid_amount_usd += amount_usd
+            purchase_order.paid_amount = purchase_order.paid_amount_usd
+            purchase_order.save(update_fields=['paid_amount', 'paid_amount_usd'])
         
         return payment
 
@@ -345,22 +411,74 @@ class PurchaseService:
         transactions = []
         
         for order in orders:
+            order_usd = order.total_amount_usd
+            if order_usd == 0 and order.total_amount:
+                if order.transaction_currency == 'USD':
+                    order_usd = order.total_amount
+                elif order.usd_to_syp_old_snapshot and order.usd_to_syp_new_snapshot:
+                    order_usd = to_usd(
+                        order.total_amount,
+                        order.transaction_currency,
+                        usd_to_syp_old=order.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=order.usd_to_syp_new_snapshot
+                    )
+
+            order_syp_old = order.total_amount
+            if order.transaction_currency == 'SYP_NEW':
+                order_syp_old = order.total_amount * Decimal('100')
+            elif order.transaction_currency == 'USD':
+                if order.usd_to_syp_old_snapshot and order.usd_to_syp_new_snapshot:
+                    order_syp_old = from_usd(
+                        order_usd,
+                        'SYP_OLD',
+                        usd_to_syp_old=order.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=order.usd_to_syp_new_snapshot
+                    )
+
             transactions.append({
                 'date': order.order_date,
                 'type': 'purchase',
                 'reference': order.order_number,
-                'debit': order.total_amount,
+                'debit': order_syp_old,
+                'debit_usd': order_usd,
                 'credit': Decimal('0.00'),
+                'credit_usd': Decimal('0.00'),
                 'description': f'أمر شراء رقم {order.order_number}'
             })
         
         for payment in payments:
+            payment_usd = payment.amount_usd
+            if payment_usd == 0 and payment.amount:
+                if payment.transaction_currency == 'USD':
+                    payment_usd = payment.amount
+                elif payment.usd_to_syp_old_snapshot and payment.usd_to_syp_new_snapshot:
+                    payment_usd = to_usd(
+                        payment.amount,
+                        payment.transaction_currency,
+                        usd_to_syp_old=payment.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=payment.usd_to_syp_new_snapshot
+                    )
+
+            payment_syp_old = payment.amount
+            if payment.transaction_currency == 'SYP_NEW':
+                payment_syp_old = payment.amount * Decimal('100')
+            elif payment.transaction_currency == 'USD':
+                if payment.usd_to_syp_old_snapshot and payment.usd_to_syp_new_snapshot:
+                    payment_syp_old = from_usd(
+                        payment_usd,
+                        'SYP_OLD',
+                        usd_to_syp_old=payment.usd_to_syp_old_snapshot,
+                        usd_to_syp_new=payment.usd_to_syp_new_snapshot
+                    )
+
             transactions.append({
                 'date': payment.payment_date,
                 'type': 'payment',
                 'reference': payment.payment_number,
                 'debit': Decimal('0.00'),
-                'credit': payment.amount,
+                'debit_usd': Decimal('0.00'),
+                'credit': payment_syp_old,
+                'credit_usd': payment_usd,
                 'description': f'دفعة رقم {payment.payment_number}'
             })
         
@@ -369,9 +487,12 @@ class PurchaseService:
         
         # Calculate running balance
         balance = supplier.opening_balance
+        balance_usd = supplier.opening_balance_usd
         for t in transactions:
             balance = balance + t['debit'] - t['credit']
+            balance_usd = balance_usd + t.get('debit_usd', Decimal('0.00')) - t.get('credit_usd', Decimal('0.00'))
             t['balance'] = balance
+            t['balance_usd'] = balance_usd
         
         return {
             'supplier': {
@@ -380,8 +501,12 @@ class PurchaseService:
                 'code': supplier.code
             },
             'opening_balance': supplier.opening_balance,
+            'opening_balance_usd': supplier.opening_balance_usd,
             'closing_balance': supplier.current_balance,
+            'closing_balance_usd': supplier.current_balance_usd,
             'total_purchases': sum(t['debit'] for t in transactions),
+            'total_purchases_usd': sum(t.get('debit_usd', Decimal('0.00')) for t in transactions),
             'total_payments': sum(t['credit'] for t in transactions),
+            'total_payments_usd': sum(t.get('credit_usd', Decimal('0.00')) for t in transactions),
             'transactions': transactions
         }

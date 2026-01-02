@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QDate, Signal
 from PySide6.QtGui import QFont
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.cards import Card
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
@@ -288,14 +288,14 @@ class ReportsView(QWidget):
         if report_type == 'sales':
             data = api.get_sales_report(start_date, end_date)
             summary = data.get('summary', {})
-            total = float(summary.get('total', 0))
+            total = float(summary.get('total_usd', summary.get('total', 0)) or 0)
             count = summary.get('count', 0)
-            MessageDialog.info(self, "تقرير المبيعات", f"إجمالي المبيعات: {total:,.2f} ل.س\nعدد الفواتير: {count}")
+            MessageDialog.info(self, "تقرير المبيعات", f"إجمالي المبيعات: {config.format_usd(total)}\nعدد الفواتير: {count}")
         elif report_type == 'profit':
             data = api.get_profit_report(start_date, end_date)
-            net_profit = float(data.get('net_profit', 0))
-            gross_profit = float(data.get('gross_profit', 0))
-            MessageDialog.info(self, "تقرير الأرباح", f"إجمالي الربح: {gross_profit:,.2f} ل.س\nصافي الربح: {net_profit:,.2f} ل.س")
+            net_profit = float(data.get('net_profit_usd', data.get('net_profit', 0)) or 0)
+            gross_profit = float(data.get('gross_profit_usd', data.get('gross_profit', 0)) or 0)
+            MessageDialog.info(self, "تقرير الأرباح", f"إجمالي الربح: {config.format_usd(gross_profit)}\nصافي الربح: {config.format_usd(net_profit)}")
         elif report_type == 'inventory':
             data = api.get_inventory_report()
             total_value = float(data.get('total_value', 0))
@@ -307,8 +307,8 @@ class ReportsView(QWidget):
             summary = data.get('summary', {})
             total = summary.get('total_customers', 0)
             active = summary.get('active_customers', 0)
-            receivables = float(summary.get('total_receivables', 0))
-            MessageDialog.info(self, "تقرير العملاء", f"إجمالي العملاء: {total}\nالعملاء النشطين: {active}\nإجمالي المستحقات: {receivables:,.2f} ل.س")
+            receivables = float(summary.get('total_receivables_usd', summary.get('total_receivables', 0)) or 0)
+            MessageDialog.info(self, "تقرير العملاء", f"إجمالي العملاء: {total}\nالعملاء النشطين: {active}\nإجمالي المستحقات: {config.format_usd(receivables)}")
         else:
             MessageDialog.info(self, "معلومات", "هذا التقرير قيد التطوير")
         

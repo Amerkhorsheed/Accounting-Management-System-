@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from decimal import Decimal
 
-from ..config import Colors, Fonts
+from ..config import Colors, Fonts, config
 from ..widgets.forms import FormField
 from ..widgets.dialogs import MessageDialog, ConfirmDialog
 from ..services.api import api, ApiException
@@ -118,12 +118,18 @@ class ProductUnitDialog(QDialog):
         
         # Sale price
         self.sale_price_field = FormField(
-            label='سعر البيع',
+            label='سعر البيع (USD)',
             field_type='number',
             required=False,
             placeholder='سعر البيع لهذه الوحدة'
         )
-        sale_price = self.data.get('sale_price', 0)
+        sale_price = self.data.get('sale_price_usd', None)
+        if sale_price is None:
+            sale_price = self.data.get('sale_price', 0)
+            try:
+                sale_price = float(config.convert_to_secondary(float(sale_price or 0)))
+            except Exception:
+                sale_price = 0
         if isinstance(sale_price, str):
             sale_price = float(sale_price)
         self.sale_price_field.set_value(sale_price)
@@ -131,12 +137,18 @@ class ProductUnitDialog(QDialog):
         
         # Cost price
         self.cost_price_field = FormField(
-            label='سعر التكلفة',
+            label='سعر التكلفة (USD)',
             field_type='number',
             required=False,
             placeholder='سعر التكلفة لهذه الوحدة'
         )
-        cost_price = self.data.get('cost_price', 0)
+        cost_price = self.data.get('cost_price_usd', None)
+        if cost_price is None:
+            cost_price = self.data.get('cost_price', 0)
+            try:
+                cost_price = float(config.convert_to_secondary(float(cost_price or 0)))
+            except Exception:
+                cost_price = 0
         if isinstance(cost_price, str):
             cost_price = float(cost_price)
         self.cost_price_field.set_value(cost_price)
@@ -192,12 +204,17 @@ class ProductUnitDialog(QDialog):
             self.conversion_factor_field.set_error("معامل التحويل يجب أن يكون أكبر من صفر")
             return
         
+        sale_price_usd = self.sale_price_field.get_value() or 0
+        cost_price_usd = self.cost_price_field.get_value() or 0
+
         # Collect data
         result = {
             'conversion_factor': conversion_factor,
             'is_base_unit': self.is_base_unit_field.get_value(),
-            'sale_price': self.sale_price_field.get_value() or 0,
-            'cost_price': self.cost_price_field.get_value() or 0,
+            'sale_price_usd': sale_price_usd,
+            'cost_price_usd': cost_price_usd,
+            'sale_price': config.convert_to_primary(float(sale_price_usd or 0), from_currency='USD'),
+            'cost_price': config.convert_to_primary(float(cost_price_usd or 0), from_currency='USD'),
             'barcode': self.barcode_field.get_value() or None,
         }
         
@@ -267,8 +284,8 @@ class ProductUnitConfigWidget(QWidget):
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels([
-            'الوحدة', 'الرمز', 'معامل التحويل', 'سعر البيع', 
-            'سعر التكلفة', 'أساسية', 'إجراءات'
+            'الوحدة', 'الرمز', 'معامل التحويل', 'سعر البيع (USD)', 
+            'سعر التكلفة (USD)', 'أساسية', 'إجراءات'
         ])
         
         # Configure table
@@ -373,13 +390,25 @@ class ProductUnitConfigWidget(QWidget):
             self.table.setItem(row, 2, cf_item)
             
             # Sale price
-            sale_price = pu.get('sale_price', '0')
+            sale_price = pu.get('sale_price_usd', None)
+            if sale_price is None:
+                sale_price = pu.get('sale_price', '0')
+                try:
+                    sale_price = float(config.convert_to_secondary(float(sale_price or 0)))
+                except Exception:
+                    sale_price = 0
             sp_item = QTableWidgetItem(f"{float(sale_price):,.2f}")
             sp_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table.setItem(row, 3, sp_item)
             
             # Cost price
-            cost_price = pu.get('cost_price', '0')
+            cost_price = pu.get('cost_price_usd', None)
+            if cost_price is None:
+                cost_price = pu.get('cost_price', '0')
+                try:
+                    cost_price = float(config.convert_to_secondary(float(cost_price or 0)))
+                except Exception:
+                    cost_price = 0
             cp_item = QTableWidgetItem(f"{float(cost_price):,.2f}")
             cp_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table.setItem(row, 4, cp_item)
@@ -472,6 +501,8 @@ class ProductUnitConfigWidget(QWidget):
                 'unit_symbol': unit_info.get('symbol'),
                 'conversion_factor': str(data.get('conversion_factor', 1)),
                 'is_base_unit': data.get('is_base_unit', False),
+                'sale_price_usd': str(data.get('sale_price_usd', 0)),
+                'cost_price_usd': str(data.get('cost_price_usd', 0)),
                 'sale_price': str(data.get('sale_price', 0)),
                 'cost_price': str(data.get('cost_price', 0)),
                 'barcode': data.get('barcode'),
@@ -513,6 +544,8 @@ class ProductUnitConfigWidget(QWidget):
         self.product_units[row].update({
             'conversion_factor': str(data.get('conversion_factor', 1)),
             'is_base_unit': data.get('is_base_unit', False),
+            'sale_price_usd': str(data.get('sale_price_usd', 0)),
+            'cost_price_usd': str(data.get('cost_price_usd', 0)),
             'sale_price': str(data.get('sale_price', 0)),
             'cost_price': str(data.get('cost_price', 0)),
             'barcode': data.get('barcode'),

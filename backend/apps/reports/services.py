@@ -13,6 +13,7 @@ from apps.purchases.models import PurchaseOrder, Supplier
 from apps.expenses.models import Expense
 from apps.inventory.models import Product, Stock, StockMovement
 from apps.core.decorators import handle_service_error
+from apps.core.utils import get_daily_fx, to_usd
 
 
 @dataclass
@@ -62,6 +63,7 @@ class ReportService:
             invoice_date__lte=end_date
         ).aggregate(
             total=Sum('total_amount'),
+            total_usd=Sum('total_amount_usd'),
             count=Count('id')
         )
         
@@ -72,6 +74,7 @@ class ReportService:
             order_date__lte=end_date
         ).aggregate(
             total=Sum('total_amount'),
+            total_usd=Sum('total_amount_usd'),
             count=Count('id')
         )
         
@@ -87,29 +90,88 @@ class ReportService:
             invoice__status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL],
             invoice__invoice_date__gte=start_date,
             invoice__invoice_date__lte=end_date
-        )
+        ).select_related('invoice')
         
         revenue = sum(item.total for item in invoice_items)
         cost = sum(item.cost_price * item.quantity for item in invoice_items)
+
+        revenue_usd = Invoice.objects.filter(
+            status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL],
+            invoice_date__gte=start_date,
+            invoice_date__lte=end_date
+        ).aggregate(total=Sum('total_amount_usd'))['total'] or Decimal('0')
+
+        cost_usd = Decimal('0')
+        for item in invoice_items:
+            inv = item.invoice
+            line_cost = item.cost_price * item.quantity
+
+            if inv.transaction_currency == 'USD':
+                cost_usd += line_cost
+            elif inv.usd_to_syp_old_snapshot is not None and inv.usd_to_syp_new_snapshot is not None:
+                cost_usd += to_usd(
+                    line_cost,
+                    inv.transaction_currency,
+                    usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                )
 
         period_returns = SalesReturn.objects.filter(
             return_date__gte=start_date,
             return_date__lte=end_date
         )
         return_revenue = sum(r.total_amount for r in period_returns)
+        return_revenue_usd = sum(r.total_amount_usd for r in period_returns)
 
         return_items = SalesReturnItem.objects.filter(
             sales_return__in=period_returns
-        ).select_related('invoice_item')
+        ).select_related('invoice_item', 'invoice_item__invoice')
         return_cost = sum(ri.invoice_item.cost_price * ri.quantity for ri in return_items)
+
+        return_cost_usd = Decimal('0')
+        for ri in return_items:
+            inv = ri.invoice_item.invoice
+            line_cost = ri.invoice_item.cost_price * ri.quantity
+            if inv.transaction_currency == 'USD':
+                return_cost_usd += line_cost
+            elif inv.usd_to_syp_old_snapshot and inv.usd_to_syp_new_snapshot:
+                return_cost_usd += to_usd(
+                    line_cost,
+                    inv.transaction_currency,
+                    usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                )
 
         revenue -= return_revenue
         cost -= return_cost
         gross_profit = revenue - cost
+
+        revenue_usd -= return_revenue_usd
+        cost_usd -= return_cost_usd
+        gross_profit_usd = revenue_usd - cost_usd
         
         # Net profit (gross - expenses)
         expenses_total = expenses['total'] or Decimal('0')
+
+        expenses_total_usd = Decimal('0')
+        for exp in Expense.objects.filter(
+            is_approved=True,
+            expense_date__gte=start_date,
+            expense_date__lte=end_date
+        ):
+            try:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(exp.expense_date)
+                expenses_total_usd += to_usd(
+                    exp.total_amount,
+                    'SYP_OLD',
+                    usd_to_syp_old=usd_to_syp_old,
+                    usd_to_syp_new=usd_to_syp_new
+                )
+            except Exception:
+                pass
+
         net_profit = gross_profit - expenses_total
+        net_profit_usd = gross_profit_usd - expenses_total_usd
         
         # Counts
         product_count = Product.objects.filter(is_active=True, is_deleted=False).count()
@@ -130,6 +192,12 @@ class ReportService:
             is_deleted=False,
             current_balance__gt=0
         ).aggregate(total=Sum('current_balance'))['total'] or Decimal('0')
+
+        receivables_total_usd = Customer.objects.filter(
+            is_active=True,
+            is_deleted=False,
+            current_balance_usd__gt=0
+        ).aggregate(total=Sum('current_balance_usd'))['total'] or Decimal('0')
         
         # Customers with outstanding balance
         customers_with_balance = Customer.objects.filter(
@@ -146,6 +214,7 @@ class ReportService:
             due_date__lt=today
         )
         overdue_total = sum(inv.remaining_amount for inv in overdue_invoices)
+        overdue_total_usd = sum(inv.remaining_amount_usd for inv in overdue_invoices)
         
         return {
             'period': {
@@ -154,19 +223,25 @@ class ReportService:
             },
             'sales': {
                 'total': sales['total'] or Decimal('0'),
+                'total_usd': sales['total_usd'] or Decimal('0'),
                 'count': sales['count'] or 0
             },
             'purchases': {
                 'total': purchases['total'] or Decimal('0'),
+                'total_usd': purchases['total_usd'] or Decimal('0'),
                 'count': purchases['count'] or 0
             },
             'expenses': {
-                'total': expenses_total
+                'total': expenses_total,
+                'total_usd': expenses_total_usd
             },
             'profit': {
                 'gross': gross_profit,
+                'gross_usd': gross_profit_usd,
                 'net': net_profit,
-                'margin': (gross_profit / revenue * 100) if revenue > 0 else Decimal('0')
+                'net_usd': net_profit_usd,
+                'margin': (gross_profit / revenue * 100) if revenue > 0 else Decimal('0'),
+                'margin_usd': (gross_profit_usd / revenue_usd * 100) if revenue_usd > 0 else Decimal('0')
             },
             'counts': {
                 'products': product_count,
@@ -176,8 +251,10 @@ class ReportService:
             },
             'credit': {
                 'receivables_total': receivables_total,
+                'receivables_total_usd': receivables_total_usd,
                 'customers_with_balance': customers_with_balance,
-                'overdue_total': overdue_total
+                'overdue_total': overdue_total,
+                'overdue_total_usd': overdue_total_usd
             },
             'top_products': list(InvoiceItem.objects.filter(
                 invoice__status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL],
@@ -188,7 +265,7 @@ class ReportService:
                 total_value=Sum(ExpressionWrapper(F('quantity') * F('unit_price'), output_field=DecimalField()))
             ).order_by('-total_value')[:5]),
             'recent_activity': list(Invoice.objects.select_related('customer').order_by('-created_at')[:5].values(
-                'id', 'invoice_number', 'customer__name', 'total_amount', 'created_at', 'status'
+                'id', 'invoice_number', 'customer__name', 'total_amount', 'total_amount_usd', 'created_at', 'status'
             ))
         }
 
@@ -211,6 +288,7 @@ class ReportService:
                 period=TruncMonth('invoice_date')
             ).values('period').annotate(
                 total=Sum('total_amount'),
+                total_usd=Sum('total_amount_usd'),
                 count=Count('id')
             ).order_by('period')
             trend = list(trend_data)
@@ -220,11 +298,17 @@ class ReportService:
                 'invoice_date'
             ).annotate(
                 total=Sum('total_amount'),
+                total_usd=Sum('total_amount_usd'),
                 count=Count('id')
             ).order_by('invoice_date')
             # Normalize field name to 'period' for consistent API response
             trend = [
-                {'period': item['invoice_date'], 'total': item['total'], 'count': item['count']}
+                {
+                    'period': item['invoice_date'],
+                    'total': item['total'],
+                    'total_usd': item.get('total_usd'),
+                    'count': item['count']
+                }
                 for item in trend_data
             ]
         
@@ -235,6 +319,7 @@ class ReportService:
             invoice_date__lte=end_date
         ).values('customer__name').annotate(
             total=Sum('total_amount'),
+            total_usd=Sum('total_amount_usd'),
             count=Count('id')
         ).order_by('-total')[:10]
         
@@ -251,16 +336,20 @@ class ReportService:
         # Summary
         summary = invoices.aggregate(
             total=Sum('total_amount'),
+            total_usd=Sum('total_amount_usd'),
             count=Count('id'),
-            avg=Avg('total_amount')
+            avg=Avg('total_amount'),
+            avg_usd=Avg('total_amount_usd')
         )
         
         return {
             'period': {'start': start_date, 'end': end_date},
             'summary': {
                 'total': summary['total'] or Decimal('0'),
+                'total_usd': summary.get('total_usd') or Decimal('0'),
                 'count': summary['count'] or 0,
-                'average': summary['avg'] or Decimal('0')
+                'average': summary['avg'] or Decimal('0'),
+                'average_usd': summary.get('avg_usd') or Decimal('0')
             },
             'trend': trend,
             'top_customers': list(top_customers),
@@ -277,14 +366,37 @@ class ReportService:
             invoice__status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL],
             invoice__invoice_date__gte=start_date,
             invoice__invoice_date__lte=end_date
-        )
+        ).select_related('invoice')
         
         revenue = Decimal('0')
         cost_of_goods = Decimal('0')
+
+        revenue_usd = Decimal('0')
+        cost_of_goods_usd = Decimal('0')
         
         for item in items:
-            revenue += item.total
-            cost_of_goods += item.cost_price * item.quantity
+            inv = item.invoice
+            item_revenue = item.total
+            item_cost = item.cost_price * item.quantity
+            revenue += item_revenue
+            cost_of_goods += item_cost
+
+            if inv.transaction_currency == 'USD':
+                revenue_usd += item_revenue
+                cost_of_goods_usd += item_cost
+            elif inv.usd_to_syp_old_snapshot and inv.usd_to_syp_new_snapshot:
+                revenue_usd += to_usd(
+                    item_revenue,
+                    inv.transaction_currency,
+                    usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                )
+                cost_of_goods_usd += to_usd(
+                    item_cost,
+                    inv.transaction_currency,
+                    usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                )
         
         period_returns = SalesReturn.objects.filter(
             return_date__gte=start_date,
@@ -292,15 +404,35 @@ class ReportService:
         )
         return_revenue = sum(r.total_amount for r in period_returns)
 
+        return_revenue_usd = sum(r.total_amount_usd for r in period_returns)
+
         return_items = SalesReturnItem.objects.filter(
             sales_return__in=period_returns
-        ).select_related('invoice_item')
+        ).select_related('invoice_item', 'invoice_item__invoice')
         return_cost = sum(ri.invoice_item.cost_price * ri.quantity for ri in return_items)
+
+        return_cost_usd = Decimal('0')
+        for ri in return_items:
+            inv = ri.invoice_item.invoice
+            line_cost = ri.invoice_item.cost_price * ri.quantity
+            if inv.transaction_currency == 'USD':
+                return_cost_usd += line_cost
+            elif inv.usd_to_syp_old_snapshot is not None and inv.usd_to_syp_new_snapshot is not None:
+                return_cost_usd += to_usd(
+                    line_cost,
+                    inv.transaction_currency,
+                    usd_to_syp_old=inv.usd_to_syp_old_snapshot,
+                    usd_to_syp_new=inv.usd_to_syp_new_snapshot
+                )
 
         revenue -= return_revenue
         cost_of_goods -= return_cost
 
+        revenue_usd -= return_revenue_usd
+        cost_of_goods_usd -= return_cost_usd
+
         gross_profit = revenue - cost_of_goods
+        gross_profit_usd = revenue_usd - cost_of_goods_usd
         
         # Expenses
         expenses_data = Expense.objects.filter(
@@ -310,11 +442,29 @@ class ReportService:
         ).values('category__name').annotate(
             total=Sum('total_amount')
         ).order_by('-total')
-        
+
         total_expenses = sum(e['total'] for e in expenses_data)
+
+        total_expenses_usd = Decimal('0')
+        for exp in Expense.objects.filter(
+            is_approved=True,
+            expense_date__gte=start_date,
+            expense_date__lte=end_date
+        ):
+            try:
+                usd_to_syp_old, usd_to_syp_new = get_daily_fx(exp.expense_date)
+                total_expenses_usd += to_usd(
+                    exp.total_amount,
+                    'SYP_OLD',
+                    usd_to_syp_old=usd_to_syp_old,
+                    usd_to_syp_new=usd_to_syp_new
+                )
+            except Exception:
+                pass
         
         # Net profit
         net_profit = gross_profit - total_expenses
+        net_profit_usd = gross_profit_usd - total_expenses_usd
         
         # By product category
         profit_by_category = InvoiceItem.objects.filter(
@@ -353,15 +503,22 @@ class ReportService:
         return {
             'period': {'start': start_date, 'end': end_date},
             'revenue': revenue,
+            'revenue_usd': revenue_usd,
             'cost_of_goods': cost_of_goods,
+            'cost_of_goods_usd': cost_of_goods_usd,
             'gross_profit': gross_profit,
+            'gross_profit_usd': gross_profit_usd,
             'gross_margin': (gross_profit / revenue * 100) if revenue > 0 else Decimal('0'),
+            'gross_margin_usd': (gross_profit_usd / revenue_usd * 100) if revenue_usd > 0 else Decimal('0'),
             'expenses': {
                 'total': total_expenses,
+                'total_usd': total_expenses_usd,
                 'by_category': list(expenses_data)
             },
             'net_profit': net_profit,
+            'net_profit_usd': net_profit_usd,
             'net_margin': (net_profit / revenue * 100) if revenue > 0 else Decimal('0'),
+            'net_margin_usd': (net_profit_usd / revenue_usd * 100) if revenue_usd > 0 else Decimal('0'),
             'profit_by_category': categories
         }
 
@@ -439,8 +596,16 @@ class ReportService:
                     invoices__invoice_date__gte=start_date,
                     invoices__invoice_date__lte=end_date
                 )
+            ),
+            invoices_total_usd=Sum(
+                'invoices__total_amount_usd',
+                filter=Q(
+                    invoices__status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PAID, Invoice.Status.PARTIAL],
+                    invoices__invoice_date__gte=start_date,
+                    invoices__invoice_date__lte=end_date
+                )
             )
-        ).order_by('-invoices_total')
+        ).order_by('-invoices_total_usd')
         
         top_customers = [
             {
@@ -449,7 +614,9 @@ class ReportService:
                 'name': c.name,
                 'invoices_count': c.invoices_count or 0,
                 'invoices_total': c.invoices_total or Decimal('0'),
-                'balance': c.current_balance
+                'invoices_total_usd': c.invoices_total_usd or Decimal('0'),
+                'balance': c.current_balance,
+                'balance_usd': c.current_balance_usd
             }
             for c in customers[:20]
         ]
@@ -458,13 +625,15 @@ class ReportService:
         total_customers = customers.count()
         active_customers = sum(1 for c in customers if c.invoices_count > 0)
         total_receivables = sum(c.current_balance for c in customers if c.current_balance > 0)
+        total_receivables_usd = sum(c.current_balance_usd for c in customers if c.current_balance_usd > 0)
         
         return {
             'period': {'start': start_date, 'end': end_date},
             'summary': {
                 'total_customers': total_customers,
                 'active_customers': active_customers,
-                'total_receivables': total_receivables
+                'total_receivables': total_receivables,
+                'total_receivables_usd': total_receivables_usd
             },
             'top_customers': top_customers
         }
@@ -634,7 +803,7 @@ class ReportService:
             Dict with total_outstanding, customers list, and summary
         """
         # Build customer filter
-        customer_filter = Q(is_active=True, is_deleted=False, current_balance__gt=0)
+        customer_filter = Q(is_active=True, is_deleted=False, current_balance_usd__gt=0)
         
         if customer_type:
             customer_filter &= Q(customer_type=customer_type)
@@ -643,7 +812,7 @@ class ReportService:
             customer_filter &= Q(salesperson_id=salesperson_id)
         
         # Get customers with outstanding balance
-        customers = Customer.objects.filter(customer_filter).order_by('-current_balance')
+        customers = Customer.objects.filter(customer_filter).order_by('-current_balance_usd')
         
         # Build invoice filter for counting
         invoice_base_filter = Q(
@@ -660,7 +829,11 @@ class ReportService:
         customer_list = []
         total_outstanding = Decimal('0.00')
         total_overdue = Decimal('0.00')
+        total_outstanding_usd = Decimal('0.00')
+        total_overdue_usd = Decimal('0.00')
         today = date.today()
+
+        usd_to_syp_old, usd_to_syp_new = get_daily_fx(today)
         
         for cust in customers:
             # Count unpaid and partial invoices for this customer
@@ -678,9 +851,8 @@ class ReportService:
             overdue_invoices = Invoice.objects.filter(
                 cust_invoice_filter & Q(due_date__lt=today)
             )
-            customer_overdue = sum(
-                inv.remaining_amount for inv in overdue_invoices
-            )
+            customer_overdue = sum(inv.remaining_amount for inv in overdue_invoices)
+            customer_overdue_usd = sum(inv.remaining_amount_usd for inv in overdue_invoices)
             
             customer_list.append({
                 'id': cust.id,
@@ -688,17 +860,35 @@ class ReportService:
                 'name': cust.name,
                 'customer_type': cust.customer_type,
                 'current_balance': cust.current_balance,
+                'current_balance_usd': cust.current_balance_usd,
                 'credit_limit': cust.credit_limit,
+                'credit_limit_usd': to_usd(
+                    cust.credit_limit,
+                    'SYP_OLD',
+                    usd_to_syp_old=usd_to_syp_old,
+                    usd_to_syp_new=usd_to_syp_new
+                ) if cust.credit_limit and cust.credit_limit > 0 else Decimal('0.00'),
                 'available_credit': cust.available_credit,
+                'available_credit_usd': (
+                    to_usd(
+                        cust.credit_limit,
+                        'SYP_OLD',
+                        usd_to_syp_old=usd_to_syp_old,
+                        usd_to_syp_new=usd_to_syp_new
+                    ) - cust.current_balance_usd
+                ) if cust.credit_limit and cust.credit_limit > 0 else Decimal('0.00'),
                 'unpaid_invoice_count': unpaid_count,
                 'partial_invoice_count': partial_count,
                 'total_invoice_count': unpaid_count + partial_count,
                 'overdue_amount': customer_overdue,
+                'overdue_amount_usd': customer_overdue_usd,
                 'salesperson': cust.salesperson.get_full_name() if cust.salesperson else None
             })
             
             total_outstanding += cust.current_balance
+            total_outstanding_usd += cust.current_balance_usd
             total_overdue += customer_overdue
+            total_overdue_usd += customer_overdue_usd
         
         return {
             'generated_at': date.today(),
@@ -711,6 +901,8 @@ class ReportService:
             'summary': {
                 'total_outstanding': total_outstanding,
                 'total_overdue': total_overdue,
+                'total_outstanding_usd': total_outstanding_usd,
+                'total_overdue_usd': total_overdue_usd,
                 'customer_count': len(customer_list),
                 'total_unpaid_invoices': sum(c['unpaid_invoice_count'] for c in customer_list),
                 'total_partial_invoices': sum(c['partial_invoice_count'] for c in customer_list)
@@ -752,6 +944,7 @@ class ReportService:
                 'min_days': None,
                 'max_days': 0,
                 'total': Decimal('0.00'),
+                'total_usd': Decimal('0.00'),
                 'invoice_count': 0,
                 'invoices': []
             },
@@ -760,6 +953,7 @@ class ReportService:
                 'min_days': 1,
                 'max_days': 30,
                 'total': Decimal('0.00'),
+                'total_usd': Decimal('0.00'),
                 'invoice_count': 0,
                 'invoices': []
             },
@@ -768,6 +962,7 @@ class ReportService:
                 'min_days': 31,
                 'max_days': 60,
                 'total': Decimal('0.00'),
+                'total_usd': Decimal('0.00'),
                 'invoice_count': 0,
                 'invoices': []
             },
@@ -776,6 +971,7 @@ class ReportService:
                 'min_days': 61,
                 'max_days': 90,
                 'total': Decimal('0.00'),
+                'total_usd': Decimal('0.00'),
                 'invoice_count': 0,
                 'invoices': []
             },
@@ -784,15 +980,18 @@ class ReportService:
                 'min_days': 91,
                 'max_days': None,
                 'total': Decimal('0.00'),
+                'total_usd': Decimal('0.00'),
                 'invoice_count': 0,
                 'invoices': []
             }
         }
         
         total_outstanding = Decimal('0.00')
+        total_outstanding_usd = Decimal('0.00')
         
         for inv in invoices:
             remaining = inv.remaining_amount
+            remaining_usd = inv.remaining_amount_usd
             if remaining <= 0:
                 continue
             
@@ -821,16 +1020,22 @@ class ReportService:
                 'customer_id': inv.customer.id,
                 'customer_name': inv.customer.name,
                 'customer_code': inv.customer.code,
+                'transaction_currency': inv.transaction_currency,
                 'total_amount': inv.total_amount,
                 'paid_amount': inv.paid_amount,
                 'remaining_amount': remaining,
+                'total_amount_usd': inv.total_amount_usd,
+                'paid_amount_usd': inv.paid_amount_usd,
+                'remaining_amount_usd': remaining_usd,
                 'days_overdue': max(0, days_overdue)
             }
             
             buckets[bucket_key]['invoices'].append(invoice_data)
             buckets[bucket_key]['total'] += remaining
+            buckets[bucket_key]['total_usd'] += remaining_usd
             buckets[bucket_key]['invoice_count'] += 1
             total_outstanding += remaining
+            total_outstanding_usd += remaining_usd
         
         # Build summary by customer
         customer_summary = {}
@@ -843,19 +1048,28 @@ class ReportService:
                         'customer_name': inv['customer_name'],
                         'customer_code': inv['customer_code'],
                         'current': Decimal('0.00'),
+                        'current_usd': Decimal('0.00'),
                         '1_30': Decimal('0.00'),
+                        '1_30_usd': Decimal('0.00'),
                         '31_60': Decimal('0.00'),
+                        '31_60_usd': Decimal('0.00'),
                         '61_90': Decimal('0.00'),
+                        '61_90_usd': Decimal('0.00'),
                         'over_90': Decimal('0.00'),
+                        'over_90_usd': Decimal('0.00'),
                         'total': Decimal('0.00')
+                        ,
+                        'total_usd': Decimal('0.00')
                     }
                 customer_summary[cust_id][bucket_key] += inv['remaining_amount']
+                customer_summary[cust_id][f"{bucket_key}_usd"] += inv['remaining_amount_usd']
                 customer_summary[cust_id]['total'] += inv['remaining_amount']
+                customer_summary[cust_id]['total_usd'] += inv['remaining_amount_usd']
         
         # Sort customer summary by total descending
         customer_breakdown = sorted(
             customer_summary.values(),
-            key=lambda x: x['total'],
+            key=lambda x: x['total_usd'],
             reverse=True
         )
         
@@ -863,14 +1077,19 @@ class ReportService:
             'as_of_date': as_of_date,
             'summary': {
                 'total_outstanding': total_outstanding,
+                'total_outstanding_usd': total_outstanding_usd,
                 'total_current': buckets['current']['total'],
                 'total_overdue': total_outstanding - buckets['current']['total'],
-                'total_severely_overdue': buckets['61_90']['total'] + buckets['over_90']['total']
+                'total_severely_overdue': buckets['61_90']['total'] + buckets['over_90']['total'],
+                'total_current_usd': buckets['current']['total_usd'],
+                'total_overdue_usd': total_outstanding_usd - buckets['current']['total_usd'],
+                'total_severely_overdue_usd': buckets['61_90']['total_usd'] + buckets['over_90']['total_usd']
             },
             'buckets': {
                 key: {
                     'label': data['label'],
                     'total': data['total'],
+                    'total_usd': data['total_usd'],
                     'invoice_count': data['invoice_count'],
                     'invoices': data['invoices']
                 }

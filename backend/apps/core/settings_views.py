@@ -1,16 +1,19 @@
 """
 Settings Views - System Configuration API
 """
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from decimal import Decimal
+from datetime import date, datetime
 
-from .settings_models import SystemSettings, Currency, TaxRate
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+
+from .settings_models import SystemSettings, Currency, TaxRate, DailyExchangeRate
 from .settings_serializers import (
     SystemSettingsSerializer, CurrencySerializer, 
-    TaxRateSerializer, CurrencyConvertSerializer
+    TaxRateSerializer, CurrencyConvertSerializer, DailyExchangeRateSerializer
 )
 
 
@@ -19,7 +22,7 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
     
     queryset = SystemSettings.objects.all()
     serializer_class = SystemSettingsSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     @action(detail=False, methods=['get'])
     def by_key(self, request):
@@ -80,7 +83,7 @@ class CurrencyViewSet(viewsets.ModelViewSet):
     
     queryset = Currency.objects.filter(is_active=True)
     serializer_class = CurrencySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     @action(detail=False, methods=['get'])
     def primary(self, request):
@@ -149,7 +152,7 @@ class TaxRateViewSet(viewsets.ModelViewSet):
     
     queryset = TaxRate.objects.filter(is_active=True)
     serializer_class = TaxRateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     
     @action(detail=False, methods=['get'])
     def default(self, request):
@@ -167,3 +170,65 @@ class TaxRateViewSet(viewsets.ModelViewSet):
         tax.is_default = True
         tax.save()
         return Response(TaxRateSerializer(tax).data)
+
+
+class AppContextViewSet(viewsets.ViewSet):
+    """Read-only endpoint for frontend bootstrapping context (FX + display currency)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        rate_date_str = request.query_params.get('rate_date')
+        strict_fx = str(request.query_params.get('strict_fx', '')).lower() in {'1', 'true', 'yes'}
+
+        if rate_date_str:
+            try:
+                rate_date = datetime.strptime(rate_date_str, '%Y-%m-%d').date()
+            except ValueError:
+                return Response(
+                    {'detail': 'صيغة التاريخ غير صالحة', 'code': 'INVALID_DATE'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            rate_date = date.today()
+
+        primary_currency = Currency.get_primary()
+        primary_currency_data = CurrencySerializer(primary_currency).data if primary_currency else None
+
+        fx = DailyExchangeRate.objects.filter(rate_date=rate_date).first()
+        if not fx and strict_fx:
+            return Response(
+                {'detail': 'سعر الصرف لليوم غير موجود', 'code': 'FX_NOT_FOUND', 'rate_date': str(rate_date)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        fx_data = None
+        if fx:
+            fx_data = {
+                'rate_date': str(fx.rate_date),
+                'usd_to_syp_old': str(fx.usd_to_syp_old),
+                'usd_to_syp_new': str(fx.usd_to_syp_new),
+            }
+
+        return Response({
+            'rate_date': str(rate_date),
+            'primary_currency': primary_currency_data,
+            'daily_fx': fx_data,
+        })
+
+
+class DailyExchangeRateViewSet(viewsets.ModelViewSet):
+    """CRUD endpoint for daily USD→SYP exchange rates."""
+
+    queryset = DailyExchangeRate.objects.all()
+    serializer_class = DailyExchangeRateSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['rate_date']
+    search_fields = ['notes']
+    ordering_fields = ['rate_date', 'created_at', 'updated_at']
+    ordering = ['-rate_date']
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]

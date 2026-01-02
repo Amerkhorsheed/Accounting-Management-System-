@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.cards import Card
 from ...widgets.dialogs import MessageDialog, ConfirmDialog
 from ...services.api import api, ApiException
@@ -111,16 +111,16 @@ class PaymentCollectionView(QWidget):
         balance_layout.setSpacing(8)
         
         balance_layout.addWidget(QLabel("الرصيد الحالي:"), 0, 0)
-        self.current_balance_label = QLabel("0.00 ل.س")
+        self.current_balance_label = QLabel(config.format_usd(0))
         self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.DANGER};")
         balance_layout.addWidget(self.current_balance_label, 0, 1)
         
         balance_layout.addWidget(QLabel("حد الائتمان:"), 1, 0)
-        self.credit_limit_label = QLabel("0.00 ل.س")
+        self.credit_limit_label = QLabel(config.format_usd(0))
         balance_layout.addWidget(self.credit_limit_label, 1, 1)
         
         balance_layout.addWidget(QLabel("الائتمان المتاح:"), 2, 0)
-        self.available_credit_label = QLabel("0.00 ل.س")
+        self.available_credit_label = QLabel(config.format_usd(0))
         self.available_credit_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         balance_layout.addWidget(self.available_credit_label, 2, 1)
         
@@ -192,7 +192,7 @@ class PaymentCollectionView(QWidget):
         self.payment_amount = QDoubleSpinBox()
         self.payment_amount.setMaximum(999999999)
         self.payment_amount.setDecimals(2)
-        self.payment_amount.setSuffix(" ل.س")
+        self.payment_amount.setSuffix("")
         self.payment_amount.valueChanged.connect(self.on_payment_amount_changed)
         amount_row.addWidget(self.payment_amount)
         right_layout.addLayout(amount_row)
@@ -255,17 +255,17 @@ class PaymentCollectionView(QWidget):
         
         summary_layout = QGridLayout()
         summary_layout.addWidget(QLabel("إجمالي المحدد:"), 0, 0)
-        self.selected_total_label = QLabel("0.00 ل.س")
+        self.selected_total_label = QLabel(config.format_usd(0))
         self.selected_total_label.setStyleSheet("font-weight: bold;")
         summary_layout.addWidget(self.selected_total_label, 0, 1)
         
         summary_layout.addWidget(QLabel("مبلغ الدفع:"), 1, 0)
-        self.payment_total_label = QLabel("0.00 ل.س")
+        self.payment_total_label = QLabel(config.format_usd(0))
         self.payment_total_label.setStyleSheet(f"font-weight: bold; color: {Colors.PRIMARY};")
         summary_layout.addWidget(self.payment_total_label, 1, 1)
         
         summary_layout.addWidget(QLabel("الفرق:"), 2, 0)
-        self.difference_label = QLabel("0.00 ل.س")
+        self.difference_label = QLabel(config.format_usd(0))
         summary_layout.addWidget(self.difference_label, 2, 1)
         
         right_layout.addLayout(summary_layout)
@@ -317,7 +317,7 @@ class PaymentCollectionView(QWidget):
         # Filter to only customers with balance > 0
         customers_with_balance = [
             c for c in self.customers_cache 
-            if float(c.get('current_balance', 0)) > 0
+            if float(c.get('current_balance_usd', c.get('current_balance', 0)) or 0) > 0
         ]
         
         # Update combo box
@@ -325,8 +325,8 @@ class PaymentCollectionView(QWidget):
         self.customer_combo.addItem("-- اختر العميل --", None)
         
         for customer in customers_with_balance:
-            balance = float(customer.get('current_balance', 0))
-            display_text = f"{customer.get('name', '')} - رصيد: {balance:,.2f} ل.س"
+            balance_usd = float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0)
+            display_text = f"{customer.get('name', '')} - رصيد: {config.format_usd(balance_usd)}"
             self.customer_combo.addItem(display_text, customer)
         
         # Clear selection
@@ -351,27 +351,27 @@ class PaymentCollectionView(QWidget):
     
     def _update_customer_display(self, customer: Dict):
         """Update the customer balance display."""
-        balance = float(customer.get('current_balance', 0))
-        credit_limit = float(customer.get('credit_limit', 0))
-        available = max(0, credit_limit - balance)
+        balance_usd = float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0)
+        credit_limit_usd = float(customer.get('credit_limit_usd', 0) or 0)
+        available_usd = float(customer.get('available_credit_usd', 0) or 0)
         
-        self.current_balance_label.setText(f"{balance:,.2f} ل.س")
-        self.credit_limit_label.setText(f"{credit_limit:,.2f} ل.س")
-        self.available_credit_label.setText(f"{available:,.2f} ل.س")
+        self.current_balance_label.setText(config.format_usd(balance_usd))
+        self.credit_limit_label.setText(config.format_usd(credit_limit_usd))
+        self.available_credit_label.setText(config.format_usd(max(0, available_usd)))
         
         # Color code the balance
-        if balance > credit_limit and credit_limit > 0:
+        if balance_usd > credit_limit_usd and credit_limit_usd > 0:
             self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.DANGER};")
-        elif balance >= credit_limit * 0.8 and credit_limit > 0:
+        elif balance_usd >= credit_limit_usd * 0.8 and credit_limit_usd > 0:
             self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.WARNING};")
         else:
             self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.SUCCESS};")
     
     def _clear_customer_display(self):
         """Clear the customer balance display."""
-        self.current_balance_label.setText("0.00 ل.س")
-        self.credit_limit_label.setText("0.00 ل.س")
-        self.available_credit_label.setText("0.00 ل.س")
+        self.current_balance_label.setText(config.format_usd(0))
+        self.credit_limit_label.setText(config.format_usd(0))
+        self.available_credit_label.setText(config.format_usd(0))
         self.current_balance_label.setStyleSheet(f"font-weight: bold; color: {Colors.LIGHT_TEXT};")
         self.invoices_table.setRowCount(0)
         self.unpaid_invoices = []
@@ -425,16 +425,16 @@ class PaymentCollectionView(QWidget):
             self.invoices_table.setItem(row, 3, due_date_item)
             
             # Total amount
-            total = float(invoice.get('total_amount', 0))
-            self.invoices_table.setItem(row, 4, QTableWidgetItem(f"{total:,.2f}"))
+            total = float(invoice.get('total_amount_usd', invoice.get('total_amount', 0)) or 0)
+            self.invoices_table.setItem(row, 4, QTableWidgetItem(config.format_usd(total)))
             
             # Paid amount
-            paid = float(invoice.get('paid_amount', 0))
-            self.invoices_table.setItem(row, 5, QTableWidgetItem(f"{paid:,.2f}"))
+            paid = float(invoice.get('paid_amount_usd', invoice.get('paid_amount', 0)) or 0)
+            self.invoices_table.setItem(row, 5, QTableWidgetItem(config.format_usd(paid)))
             
             # Remaining amount
-            remaining = float(invoice.get('remaining_amount', total - paid))
-            remaining_item = QTableWidgetItem(f"{remaining:,.2f}")
+            remaining = float(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', total - paid)) or 0)
+            remaining_item = QTableWidgetItem(config.format_usd(remaining))
             remaining_item.setForeground(QColor(Colors.DANGER))
             self.invoices_table.setItem(row, 6, remaining_item)
         
@@ -490,13 +490,14 @@ class PaymentCollectionView(QWidget):
     def _update_selected_total(self):
         """Update the selected invoices total display."""
         selected = self._get_selected_invoices()
-        total = sum(float(inv.get('remaining_amount', 0)) for inv in selected)
-        self.selected_total_label.setText(f"{total:,.2f} ل.س")
+        total = sum(float(inv.get('remaining_amount_usd', inv.get('remaining_amount', 0)) or 0) for inv in selected)
+        self.selected_total_label.setText(config.format_usd(total))
         self._update_difference()
     
     def on_payment_amount_changed(self, value: float):
         """Handle payment amount change."""
-        self.payment_total_label.setText(f"{value:,.2f} ل.س")
+        amount_usd = config.convert_to_usd(value, config.DISPLAY_CURRENCY)
+        self.payment_total_label.setText(config.format_usd(amount_usd))
         self._update_difference()
         
         if self.auto_allocate_check.isChecked():
@@ -505,12 +506,12 @@ class PaymentCollectionView(QWidget):
     
     def _update_difference(self):
         """Update the difference between payment and selected total."""
-        payment = self.payment_amount.value()
+        payment_usd = config.convert_to_usd(self.payment_amount.value(), config.DISPLAY_CURRENCY)
         selected = self._get_selected_invoices()
-        selected_total = sum(float(inv.get('remaining_amount', 0)) for inv in selected)
+        selected_total = sum(float(inv.get('remaining_amount_usd', inv.get('remaining_amount', 0)) or 0) for inv in selected)
         
-        difference = payment - selected_total
-        self.difference_label.setText(f"{difference:,.2f} ل.س")
+        difference = payment_usd - selected_total
+        self.difference_label.setText(config.format_usd(difference))
         
         if difference < 0:
             self.difference_label.setStyleSheet(f"color: {Colors.WARNING};")
@@ -535,7 +536,7 @@ class PaymentCollectionView(QWidget):
         Requirements: 7.4
         """
         self.allocations = {}
-        payment_amount = Decimal(str(self.payment_amount.value()))
+        payment_amount = Decimal(str(config.convert_to_usd(self.payment_amount.value(), config.DISPLAY_CURRENCY)))
         
         if payment_amount <= 0:
             return
@@ -551,7 +552,7 @@ class PaymentCollectionView(QWidget):
                 break
             
             invoice_id = invoice.get('id')
-            invoice_remaining = Decimal(str(invoice.get('remaining_amount', 0)))
+            invoice_remaining = Decimal(str(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', 0)) or 0))
             
             # Allocate the minimum of remaining payment and invoice remaining
             allocation = min(remaining_payment, invoice_remaining)
@@ -585,8 +586,8 @@ class PaymentCollectionView(QWidget):
             self.allocation_table.setItem(row, 0, invoice_item)
             
             # Remaining amount
-            remaining = float(invoice.get('remaining_amount', 0))
-            remaining_item = QTableWidgetItem(f"{remaining:,.2f}")
+            remaining = float(invoice.get('remaining_amount_usd', invoice.get('remaining_amount', 0)) or 0)
+            remaining_item = QTableWidgetItem(config.format_usd(remaining))
             remaining_item.setFlags(remaining_item.flags() & ~Qt.ItemIsEditable)
             self.allocation_table.setItem(row, 1, remaining_item)
             
@@ -595,7 +596,7 @@ class PaymentCollectionView(QWidget):
             
             if is_auto:
                 # Read-only display for auto-allocation
-                allocated_item = QTableWidgetItem(f"{allocated:,.2f}")
+                allocated_item = QTableWidgetItem(config.format_usd(allocated))
                 allocated_item.setFlags(allocated_item.flags() & ~Qt.ItemIsEditable)
                 if allocated > 0:
                     allocated_item.setForeground(QColor(Colors.SUCCESS))
@@ -603,10 +604,10 @@ class PaymentCollectionView(QWidget):
             else:
                 # Editable spinbox for manual allocation
                 spinbox = QDoubleSpinBox()
-                spinbox.setMaximum(remaining)
+                spinbox.setMaximum(config.convert_from_usd(remaining, config.DISPLAY_CURRENCY))
                 spinbox.setDecimals(2)
-                spinbox.setValue(allocated)
-                spinbox.setSuffix(" ل.س")
+                spinbox.setValue(config.convert_from_usd(allocated, config.DISPLAY_CURRENCY))
+                spinbox.setSuffix("")
                 spinbox.setProperty("invoice_id", invoice_id)
                 spinbox.valueChanged.connect(
                     lambda val, inv_id=invoice_id: self._on_manual_allocation_changed(inv_id, val)
@@ -623,8 +624,9 @@ class PaymentCollectionView(QWidget):
         Updates the allocations dictionary and recalculates totals.
         Requirements: 7.1, 7.3
         """
-        if value > 0:
-            self.allocations[invoice_id] = Decimal(str(value))
+        value_usd = config.convert_to_usd(value, config.DISPLAY_CURRENCY)
+        if value_usd > 0:
+            self.allocations[invoice_id] = Decimal(str(value_usd))
         elif invoice_id in self.allocations:
             del self.allocations[invoice_id]
         
@@ -633,10 +635,10 @@ class PaymentCollectionView(QWidget):
     def _update_allocation_summary(self):
         """Update the allocation summary (total allocated vs payment amount)."""
         total_allocated = sum(float(amt) for amt in self.allocations.values())
-        payment = self.payment_amount.value()
+        payment = config.convert_to_usd(self.payment_amount.value(), config.DISPLAY_CURRENCY)
         
         difference = payment - total_allocated
-        self.difference_label.setText(f"{difference:,.2f} ل.س")
+        self.difference_label.setText(config.format_usd(difference))
         
         if difference < 0:
             self.difference_label.setStyleSheet(f"color: {Colors.DANGER};")
@@ -699,14 +701,15 @@ class PaymentCollectionView(QWidget):
             if amount > 0:
                 allocations_list.append({
                     'invoice_id': invoice_id,
-                    'amount': str(amount)
+                    'amount_usd': str(amount)
                 })
         
         # Build payment data
         payment_data = {
             'customer': self.selected_customer.get('id'),
             'payment_date': self.payment_date.date().toString('yyyy-MM-dd'),
-            'amount': str(self.payment_amount.value()),
+            'amount': str(config.convert_to_usd(self.payment_amount.value(), config.DISPLAY_CURRENCY)),
+            'transaction_currency': 'USD',
             'payment_method': self.payment_method.currentData(),
             'reference': self.reference_input.text().strip() or None,
             'notes': self.notes_input.toPlainText().strip() or None,
@@ -717,7 +720,7 @@ class PaymentCollectionView(QWidget):
         # Confirm submission
         confirm = ConfirmDialog(
             "تأكيد تسجيل الدفعة",
-            f"هل تريد تسجيل دفعة بمبلغ {self.payment_amount.value():,.2f} ل.س للعميل {self.selected_customer.get('name')}؟",
+            f"هل تريد تسجيل دفعة بمبلغ {config.format_usd(config.convert_to_usd(self.payment_amount.value(), config.DISPLAY_CURRENCY))} للعميل {self.selected_customer.get('name')}؟",
             confirm_text="تسجيل",
             danger=False,
             parent=self

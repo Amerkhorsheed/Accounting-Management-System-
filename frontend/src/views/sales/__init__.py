@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont
 from datetime import datetime, timedelta
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.tables import DataTable
 from ...widgets.forms import FormDialog
 from ...widgets.dialogs import MessageDialog, ConfirmDialog
@@ -99,7 +99,7 @@ class CustomersView(QWidget):
             {'key': 'name', 'label': 'اسم العميل', 'type': 'text'},
             {'key': 'phone', 'label': 'رقم الهاتف', 'type': 'text'},
             {'key': 'mobile', 'label': 'رقم الجوال', 'type': 'text'},
-            {'key': 'current_balance', 'label': 'الرصيد', 'type': 'currency'},
+            {'key': 'current_balance_usd', 'label': 'الرصيد', 'type': 'currency'},
         ]
         
         self.table = DataTable(columns)
@@ -323,7 +323,9 @@ class InvoicesView(QWidget):
             {'key': 'invoice_number', 'label': 'رقم الفاتورة', 'type': 'text'},
             {'key': 'customer_name', 'label': 'العميل', 'type': 'text'},
             {'key': 'invoice_date', 'label': 'التاريخ', 'type': 'date'},
-            {'key': 'total_amount', 'label': 'المبلغ', 'type': 'currency'},
+            {'key': 'total_amount_usd', 'label': 'المبلغ', 'type': 'currency'},
+            {'key': 'remaining_amount_usd', 'label': 'المتبقي', 'type': 'currency'},
+            {'key': 'transaction_currency_display', 'label': 'العملة', 'type': 'text'},
             {'key': 'status_display', 'label': 'الحالة', 'type': 'text'},
         ]
         
@@ -406,6 +408,17 @@ class InvoicesView(QWidget):
             invoices = response if isinstance(response, list) else []
             total = len(invoices)
         
+        for inv in invoices:
+            cur = inv.get('transaction_currency')
+            if cur == 'USD':
+                inv['transaction_currency_display'] = 'USD'
+            elif cur == 'SYP_NEW':
+                inv['transaction_currency_display'] = 'ل.س جديد'
+            elif cur == 'SYP_OLD':
+                inv['transaction_currency_display'] = 'ل.س قديم'
+            else:
+                inv['transaction_currency_display'] = str(cur or '')
+
         self.table.set_data(invoices, total)
     
     def _load_customers(self):
@@ -649,8 +662,8 @@ class InvoiceCancelDialog(QDialog):
         
         info_layout.addWidget(QLabel(f"رقم الفاتورة: {self.invoice.get('invoice_number', '')}"))
         info_layout.addWidget(QLabel(f"العميل: {self.invoice.get('customer_name', '')}"))
-        total = float(self.invoice.get('total_amount', 0))
-        info_layout.addWidget(QLabel(f"المبلغ: {total:,.2f} ل.س"))
+        total = float(self.invoice.get('total_amount_usd', self.invoice.get('total_amount', 0)) or 0)
+        info_layout.addWidget(QLabel(f"المبلغ: {config.format_usd(total)}"))
         
         layout.addWidget(info_frame)
         
@@ -816,7 +829,7 @@ class POSView(QWidget):
         # Current balance row
         balance_row = QHBoxLayout()
         balance_row.addWidget(QLabel("الرصيد الحالي:"))
-        self.balance_label = QLabel("0.00 ل.س")
+        self.balance_label = QLabel(config.format_usd(0))
         self.balance_label.setStyleSheet(f"font-weight: bold;")
         balance_row.addWidget(self.balance_label)
         balance_row.addStretch()
@@ -825,7 +838,7 @@ class POSView(QWidget):
         # Credit limit row
         limit_row = QHBoxLayout()
         limit_row.addWidget(QLabel("حد الائتمان:"))
-        self.credit_limit_label = QLabel("0.00 ل.س")
+        self.credit_limit_label = QLabel(config.format_usd(0))
         self.credit_limit_label.setStyleSheet(f"font-weight: bold;")
         limit_row.addWidget(self.credit_limit_label)
         limit_row.addStretch()
@@ -834,7 +847,7 @@ class POSView(QWidget):
         # Available credit row
         available_row = QHBoxLayout()
         available_row.addWidget(QLabel("الائتمان المتاح:"))
-        self.available_credit_label = QLabel("0.00 ل.س")
+        self.available_credit_label = QLabel(config.format_usd(0))
         self.available_credit_label.setStyleSheet(f"font-weight: bold; color: {Colors.SUCCESS};")
         available_row.addWidget(self.available_credit_label)
         available_row.addStretch()
@@ -880,7 +893,7 @@ class POSView(QWidget):
         # Subtotal
         subtotal_row = QHBoxLayout()
         subtotal_row.addWidget(QLabel("المجموع الفرعي:"))
-        self.subtotal_label = QLabel("0.00 ل.س")
+        self.subtotal_label = QLabel(config.format_usd(0))
         self.subtotal_label.setProperty("class", "subtitle")
         subtotal_row.addWidget(self.subtotal_label)
         totals_layout.addLayout(subtotal_row)
@@ -888,7 +901,7 @@ class POSView(QWidget):
         # Tax
         tax_row = QHBoxLayout()
         tax_row.addWidget(QLabel("الضريبة:"))
-        self.tax_label = QLabel("0.00 ل.س")
+        self.tax_label = QLabel(config.format_usd(0))
         self.tax_label.setProperty("class", "subtitle")
         tax_row.addWidget(self.tax_label)
         totals_layout.addLayout(tax_row)
@@ -898,7 +911,7 @@ class POSView(QWidget):
         total_lbl = QLabel("الإجمالي:")
         total_lbl.setProperty("class", "h2")
         total_row.addWidget(total_lbl)
-        self.total_label = QLabel("0.00 ل.س")
+        self.total_label = QLabel(config.format_usd(0))
         self.total_label.setProperty("class", "title")
         self.total_label.setStyleSheet(f"color: {Colors.PRIMARY};")
         total_row.addWidget(self.total_label)
@@ -970,20 +983,20 @@ class POSView(QWidget):
         if not self.selected_customer:
             return
         
-        # Update customer info display
-        current_balance = float(self.selected_customer.get('current_balance', 0))
-        credit_limit = float(self.selected_customer.get('credit_limit', 0))
-        available_credit = credit_limit - current_balance if credit_limit > 0 else float('inf')
+        # Update customer info display (USD base)
+        current_balance_usd = float(self.selected_customer.get('current_balance_usd', self.selected_customer.get('current_balance', 0)) or 0)
+        credit_limit_usd = float(self.selected_customer.get('credit_limit_usd', self.selected_customer.get('credit_limit', 0)) or 0)
+        available_credit_usd = float(self.selected_customer.get('available_credit_usd', (credit_limit_usd - current_balance_usd)) or 0)
         
-        self.balance_label.setText(f"{current_balance:,.2f} ل.س")
-        self.credit_limit_label.setText(f"{credit_limit:,.2f} ل.س" if credit_limit > 0 else "غير محدد")
+        self.balance_label.setText(config.format_usd(current_balance_usd))
+        self.credit_limit_label.setText(config.format_usd(credit_limit_usd) if credit_limit_usd > 0 else "غير محدد")
         
-        if credit_limit > 0:
-            self.available_credit_label.setText(f"{available_credit:,.2f} ل.س")
+        if credit_limit_usd > 0:
+            self.available_credit_label.setText(config.format_usd(available_credit_usd))
             # Color based on available credit
-            if available_credit <= 0:
+            if available_credit_usd <= 0:
                 self.available_credit_label.setStyleSheet(f"font-weight: bold; color: {Colors.DANGER};")
-            elif current_balance >= credit_limit * 0.8:
+            elif current_balance_usd >= credit_limit_usd * 0.8:
                 self.available_credit_label.setStyleSheet(f"font-weight: bold; color: {Colors.WARNING};")
             else:
                 self.available_credit_label.setStyleSheet(f"font-weight: bold; color: {Colors.SUCCESS};")
@@ -993,8 +1006,8 @@ class POSView(QWidget):
         
         # Show credit warning if applicable
         # Requirements: 1.6 - Show credit limit warning when applicable
-        if credit_limit > 0 and current_balance >= credit_limit * 0.8:
-            if current_balance >= credit_limit:
+        if credit_limit_usd > 0 and current_balance_usd >= credit_limit_usd * 0.8:
+            if current_balance_usd >= credit_limit_usd:
                 self.credit_warning_label.setText("⚠️ تم تجاوز حد الائتمان!")
                 self.credit_warning_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: bold;")
             else:
@@ -1055,12 +1068,13 @@ class POSView(QWidget):
                 return
         
         # Add new item
+        unit_price = float(product.get('sale_price_usd', product.get('sale_price', 0)) or 0)
         self.cart_items.append({
             'product_id': product['id'],
             'product_name': product['name'],
             'quantity': 1,
-            'unit_price': float(product.get('sale_price', 0)),
-            'total': float(product.get('sale_price', 0)),
+            'unit_price': unit_price,
+            'total': unit_price,
         })
         self.update_cart_display()
         
@@ -1081,8 +1095,8 @@ class POSView(QWidget):
         for i, item in enumerate(self.cart_items):
             self.cart_table.setItem(i, 0, QTableWidgetItem(item['product_name']))
             self.cart_table.setItem(i, 1, QTableWidgetItem(str(item['quantity'])))
-            self.cart_table.setItem(i, 2, QTableWidgetItem(f"{item['unit_price']:,.2f}"))
-            self.cart_table.setItem(i, 3, QTableWidgetItem(f"{item['total']:,.2f}"))
+            self.cart_table.setItem(i, 2, QTableWidgetItem(config.format_usd(float(item.get('unit_price', 0) or 0))))
+            self.cart_table.setItem(i, 3, QTableWidgetItem(config.format_usd(float(item.get('total', 0) or 0))))
         self.update_totals()
         
     def update_totals(self):
@@ -1097,9 +1111,9 @@ class POSView(QWidget):
         tax = 0
         total = subtotal + tax
         
-        self.subtotal_label.setText(f"{subtotal:,.2f} ل.س")
-        self.tax_label.setText(f"0.00 ل.س")  # Always show 0.00 for POS
-        self.total_label.setText(f"{total:,.2f} ل.س")
+        self.subtotal_label.setText(config.format_usd(float(subtotal or 0)))
+        self.tax_label.setText(config.format_usd(0))  # Always show 0.00 for POS
+        self.total_label.setText(config.format_usd(float(total or 0)))
     
     def get_cart_total(self) -> float:
         """Get current cart total."""
@@ -1130,33 +1144,33 @@ class POSView(QWidget):
             
             # Validate credit limit
             # Requirements: 1.4, 6.4 - Credit limit validation
-            cart_total = self.get_cart_total()
-            current_balance = float(self.selected_customer.get('current_balance', 0))
-            credit_limit = float(self.selected_customer.get('credit_limit', 0))
+            cart_total_usd = float(self.get_cart_total() or 0)
+            current_balance_usd = float(self.selected_customer.get('current_balance_usd', self.selected_customer.get('current_balance', 0)) or 0)
+            credit_limit_usd = float(self.selected_customer.get('credit_limit_usd', self.selected_customer.get('credit_limit', 0)) or 0)
             
-            if credit_limit > 0:
-                new_balance = current_balance + cart_total
+            if credit_limit_usd > 0:
+                new_balance_usd = current_balance_usd + cart_total_usd
                 
-                if new_balance > credit_limit:
+                if new_balance_usd > credit_limit_usd:
                     # Show credit limit override dialog
                     # Requirements: 1.4, 6.4, 6.5 - Override with confirmation
                     dialog = CreditLimitOverrideDialog(
                         customer_name=self.selected_customer.get('name', ''),
-                        current_balance=current_balance,
-                        credit_limit=credit_limit,
-                        requested_amount=cart_total,
+                        current_balance=current_balance_usd,
+                        credit_limit=credit_limit_usd,
+                        requested_amount=cart_total_usd,
                         parent=self
                     )
                     if dialog.exec() == QDialog.Accepted:
                         override_reason = dialog.get_reason()
                         self._create_credit_invoice(override_reason)
                     return
-                elif new_balance >= credit_limit * 0.8:
+                elif new_balance_usd >= credit_limit_usd * 0.8:
                     # Show warning but allow to proceed
                     if not MessageDialog.confirm(
                         self,
                         "تحذير حد الائتمان",
-                        f"الرصيد الجديد ({new_balance:,.2f}) يقترب من حد الائتمان ({credit_limit:,.2f}).\n"
+                        f"الرصيد الجديد ({config.format_usd(new_balance_usd)}) يقترب من حد الائتمان ({config.format_usd(credit_limit_usd)}).\n"
                         "هل تريد المتابعة؟"
                     ):
                         return
@@ -1186,6 +1200,7 @@ class POSView(QWidget):
             'warehouse': self.default_warehouse.get('id'),
             'invoice_type': payment_method,
             'invoice_date': invoice_date.strftime('%Y-%m-%d'),
+            'transaction_currency': 'USD',
             'items': [
                 {
                     'product': item['product_id'],
@@ -1213,7 +1228,8 @@ class POSView(QWidget):
             invoice_data['customer'] = None
 
         if override_reason:
-            invoice_data['credit_override_reason'] = override_reason
+            invoice_data['override_credit_limit'] = True
+            invoice_data['override_reason'] = override_reason
         
         try:
             # Create and confirm invoice in one go
@@ -1317,7 +1333,7 @@ class POSView(QWidget):
         
         # Add product buttons
         for i, product in enumerate(self.products_cache[:12]):  # Show first 12
-            btn = QPushButton(f"{product['name']}\n{float(product.get('sale_price', 0)):,.0f} ل.س")
+            btn = QPushButton(f"{product['name']}\n{config.format_usd(float(product.get('sale_price_usd', product.get('sale_price', 0)) or 0))}")
             btn.setFixedSize(120, 80)
             btn.clicked.connect(lambda _, idx=i: self.add_to_cart(idx))
             self.products_grid.addWidget(btn, i // 4, i % 4)
@@ -1376,16 +1392,16 @@ class CreditLimitOverrideDialog(QDialog):
         info_layout.setSpacing(8)
         
         info_layout.addWidget(QLabel(f"العميل: {self.customer_name}"))
-        info_layout.addWidget(QLabel(f"الرصيد الحالي: {self.current_balance:,.2f} ل.س"))
-        info_layout.addWidget(QLabel(f"حد الائتمان: {self.credit_limit:,.2f} ل.س"))
-        info_layout.addWidget(QLabel(f"المبلغ المطلوب: {self.requested_amount:,.2f} ل.س"))
+        info_layout.addWidget(QLabel(f"الرصيد الحالي: {config.format_usd(self.current_balance)}"))
+        info_layout.addWidget(QLabel(f"حد الائتمان: {config.format_usd(self.credit_limit)}"))
+        info_layout.addWidget(QLabel(f"المبلغ المطلوب: {config.format_usd(self.requested_amount)}"))
         
-        new_balance_label = QLabel(f"الرصيد الجديد: {self.new_balance:,.2f} ل.س")
+        new_balance_label = QLabel(f"الرصيد الجديد: {config.format_usd(self.new_balance)}")
         new_balance_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: bold;")
         info_layout.addWidget(new_balance_label)
         
         excess = self.new_balance - self.credit_limit
-        excess_label = QLabel(f"مبلغ التجاوز: {excess:,.2f} ل.س")
+        excess_label = QLabel(f"مبلغ التجاوز: {config.format_usd(excess)}")
         excess_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: bold;")
         info_layout.addWidget(excess_label)
         
@@ -1459,6 +1475,8 @@ class InvoiceFormDialog(QDialog):
         self.data = data or {}
         self.items = []
         self._updating_items_table = False
+        self._fx_syncing = False
+        self.transaction_currency = 'USD'
         self.customers_cache = []
         self.warehouses_cache = []
         self.products_cache = []
@@ -1493,6 +1511,16 @@ class InvoiceFormDialog(QDialog):
         self.type_combo.setMinimumWidth(120)
         self.type_combo.currentIndexChanged.connect(self.on_type_changed)
         header_layout.addWidget(self.type_combo)
+
+        self.currency_label = QLabel("العملة:")
+        header_layout.addWidget(self.currency_label)
+        self.currency_combo = QComboBox()
+        self.currency_combo.addItem("USD", "USD")
+        self.currency_combo.addItem("الليرة القديمة", "SYP_OLD")
+        self.currency_combo.addItem("الليرة الجديدة", "SYP_NEW")
+        self.currency_combo.setMinimumWidth(140)
+        self.currency_combo.currentIndexChanged.connect(self.on_currency_changed)
+        header_layout.addWidget(self.currency_combo)
 
         self.print_btn = QPushButton("🖨️ طباعة")
         self.print_btn.setProperty("class", "secondary")
@@ -1556,6 +1584,7 @@ class InvoiceFormDialog(QDialog):
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDate(QDate.currentDate())
         self.date_edit.setMinimumWidth(120)
+        self.date_edit.dateChanged.connect(self.load_fx_for_date)
         date_container.addWidget(self.date_edit)
         fields_layout.addLayout(date_container)
 
@@ -1778,7 +1807,7 @@ class InvoiceFormDialog(QDialog):
             else:
                 lbl.setProperty("class", "subtitle")
             
-            val = QLabel("0.00 ل.س")
+            val = QLabel(config.format_usd(0))
             if is_grand:
                 val.setFont(QFont(Fonts.FAMILY_AR, 20, QFont.Bold))
                 val.setStyleSheet(f"color: {Colors.PRIMARY};")
@@ -1802,7 +1831,7 @@ class InvoiceFormDialog(QDialog):
 
         self.discount_type_combo = QComboBox()
         self.discount_type_combo.addItem("%", "percent")
-        self.discount_type_combo.addItem("ل.س", "amount")
+        self.discount_type_combo.addItem("$", "amount")
         self.discount_type_combo.setFixedWidth(70)
         discount_row.addWidget(self.discount_type_combo)
 
@@ -1842,6 +1871,35 @@ class InvoiceFormDialog(QDialog):
         paid_label = QLabel("💰 المبلغ المدفوع")
         paid_label.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_BODY, QFont.Bold))
         summary_card_layout.addWidget(paid_label)
+
+        fx_row = QHBoxLayout()
+        fx_row.setSpacing(6)
+        fx_row.addWidget(QLabel("FX:"))
+        self.usd_to_syp_new_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_new_snapshot.setRange(0, 999999999999)
+        self.usd_to_syp_new_snapshot.setDecimals(6)
+        self.usd_to_syp_new_snapshot.setPrefix("1$=")
+        self.usd_to_syp_new_snapshot.setSuffix(" جديد")
+        self.usd_to_syp_new_snapshot.valueChanged.connect(self.on_fx_new_changed)
+        fx_row.addWidget(self.usd_to_syp_new_snapshot, 1)
+        self.usd_to_syp_old_snapshot = QDoubleSpinBox()
+        self.usd_to_syp_old_snapshot.setRange(0, 99999999999999)
+        self.usd_to_syp_old_snapshot.setDecimals(6)
+        self.usd_to_syp_old_snapshot.setPrefix("1$=")
+        self.usd_to_syp_old_snapshot.setSuffix(" قديم")
+        self.usd_to_syp_old_snapshot.valueChanged.connect(self.on_fx_old_changed)
+        fx_row.addWidget(self.usd_to_syp_old_snapshot, 1)
+        summary_card_layout.addLayout(fx_row)
+
+        payable_row = QHBoxLayout()
+        payable_label = QLabel("مستحق الدفع:")
+        payable_label.setProperty("class", "subtitle")
+        payable_row.addWidget(payable_label)
+        payable_row.addStretch()
+        self.payable_value = QLabel("0.00")
+        self.payable_value.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
+        payable_row.addWidget(self.payable_value)
+        summary_card_layout.addLayout(payable_row)
         
         # Payment amount row with full payment button
         paid_row = QHBoxLayout()
@@ -1850,7 +1908,7 @@ class InvoiceFormDialog(QDialog):
         self.paid_amount_spin = QDoubleSpinBox()
         self.paid_amount_spin.setRange(0, 999999999)
         self.paid_amount_spin.setDecimals(2)
-        self.paid_amount_spin.setSuffix(" ل.س")
+        self.paid_amount_spin.setSuffix(" $")
         self.paid_amount_spin.setStyleSheet(f"font-size: 14px; padding: 6px; border: 2px solid {Colors.PRIMARY}; border-radius: 6px;")  # Reduced font and padding
         paid_row.addWidget(self.paid_amount_spin, 2)
         
@@ -1869,7 +1927,7 @@ class InvoiceFormDialog(QDialog):
         remaining_label.setProperty("class", "subtitle")
         remaining_row.addWidget(remaining_label)
         remaining_row.addStretch()
-        self.remaining_value = QLabel("0.00 ل.س")
+        self.remaining_value = QLabel(self._format_transaction_amount(0))
         self.remaining_value.setFont(QFont(Fonts.FAMILY_AR, Fonts.SIZE_H3, QFont.Bold))
         self.remaining_value.setStyleSheet(f"color: {Colors.WARNING};")
         remaining_row.addWidget(self.remaining_value)
@@ -1908,6 +1966,8 @@ class InvoiceFormDialog(QDialog):
 
         content_layout.addLayout(right_column, 1)
         main_layout.addLayout(content_layout)
+
+        self.on_currency_changed(self.currency_combo.currentIndex())
     
     def load_data(self):
         """Load customers, warehouses, products from API."""
@@ -1954,7 +2014,7 @@ class InvoiceFormDialog(QDialog):
             self.product_combo.clear()
             self.product_combo.addItem("اختر المنتج...", None)
             for product in self.products_cache:
-                display_text = f"{product.get('name', '')} - {float(product.get('sale_price', 0)):,.2f} ل.س"
+                display_text = f"{product.get('name', '')} - ${float(product.get('sale_price_usd', product.get('sale_price', 0)) or 0):,.2f}"
                 self.product_combo.addItem(display_text, product.get('id'))
             
             # Update price when product is selected
@@ -2010,9 +2070,11 @@ class InvoiceFormDialog(QDialog):
 
     def _refresh_summary_totals(self):
         subtotal, tax, grand_total = self._calculate_totals()
-        self.subtotal_value.setText(f"{subtotal:,.2f} ل.س")
-        self.tax_value.setText(f"{tax:,.2f} ل.س")
-        self.total_value.setText(f"{grand_total:,.2f} ل.س")
+        self.subtotal_value.setText(config.format_usd(subtotal))
+        self.tax_value.setText(config.format_usd(tax))
+        self.total_value.setText(config.format_usd(grand_total))
+        payable = self._usd_to_transaction_amount(grand_total)
+        self.payable_value.setText(self._format_transaction_amount(payable))
         self._update_cash_paid_amount()
         self.update_remaining_amount()
 
@@ -2020,7 +2082,7 @@ class InvoiceFormDialog(QDialog):
         mode = self.discount_type_combo.currentData()
         if mode == 'amount':
             self.discount_spin.setRange(0, 999999999)
-            self.discount_spin.setSuffix(" ل.س")
+            self.discount_spin.setSuffix(" $")
         else:
             self.discount_spin.setRange(0, 100)
             self.discount_spin.setSuffix(" %")
@@ -2029,15 +2091,16 @@ class InvoiceFormDialog(QDialog):
     def set_full_payment(self):
         """Set paid amount to full invoice total (including tax)."""
         subtotal, tax, grand_total = self._calculate_totals()
-        self.paid_amount_spin.setValue(grand_total)
+        self.paid_amount_spin.setValue(self._usd_to_transaction_amount(grand_total))
         self.update_remaining_amount()
     
     def update_remaining_amount(self):
         """Update the remaining amount display."""
         subtotal, tax, grand_total = self._calculate_totals()
         paid = self.paid_amount_spin.value()
-        remaining = max(0, grand_total - paid)
-        self.remaining_value.setText(f"{remaining:,.2f} ل.س")
+        payable = self._usd_to_transaction_amount(grand_total)
+        remaining = max(0, payable - paid)
+        self.remaining_value.setText(self._format_transaction_amount(remaining))
         
         # Color code based on remaining
         if remaining <= 0.01:  # Small tolerance for floating point
@@ -2057,7 +2120,7 @@ class InvoiceFormDialog(QDialog):
             for product in self.products_cache:
                 if product.get('id') == product_id:
                     # Update price with base sale price
-                    self.price_spin.setValue(float(product.get('sale_price', 0)))
+                    self.price_spin.setValue(float(product.get('sale_price_usd', product.get('sale_price', 0)) or 0))
                     
                     # Update unit selector with product units
                     # Requirements: 3.1 - Display available units for selected product
@@ -2113,7 +2176,7 @@ class InvoiceFormDialog(QDialog):
         """Add a product to items list."""
         product_id = product.get('id')
         product_name = product.get('name', '')
-        unit_price = float(product.get('sale_price', 0))
+        unit_price = float(product.get('sale_price_usd', product.get('sale_price', 0)) or 0)
         
         # Get product units for unit selection
         product_units = product.get('product_units', [])
@@ -2139,7 +2202,7 @@ class InvoiceFormDialog(QDialog):
                 unit_symbol = selected_unit.get('unit_symbol', '')
                 product_unit_id = selected_unit.get('id')
                 # Use unit-specific price if available
-                unit_sale_price = float(selected_unit.get('sale_price', 0))
+                unit_sale_price = float(selected_unit.get('sale_price_usd', selected_unit.get('sale_price', 0)) or 0)
                 if unit_sale_price > 0:
                     unit_price = unit_sale_price
         
@@ -2391,27 +2454,42 @@ class InvoiceFormDialog(QDialog):
         if not self.items:
             MessageDialog.warning(self, "تنبيه", "يجب إضافة منتج واحد على الأقل")
             return False
+
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency != 'USD':
+            fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+            fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+            if fx_old <= 0 or fx_new <= 0:
+                MessageDialog.warning(self, "تنبيه", "يرجى إدخال سعر الصرف")
+                return False
         
         return True
     
     def get_data(self) -> dict:
         """Get form data as dictionary."""
-        from ...config import config
-        
         # Determine tax rate based on global settings
         # If TAX_ENABLED is False, send tax_rate=0 to override product defaults
         global_tax_rate = config.TAX_RATE if config.TAX_ENABLED else 0
-        
+
+        invoice_date = self.date_edit.date().toString('yyyy-MM-dd')
+        transaction_currency = self.currency_combo.currentData() or 'USD'
+        fx_old = float(self.usd_to_syp_old_snapshot.value() or 0)
+        fx_new = float(self.usd_to_syp_new_snapshot.value() or 0)
+
         data = {
             'invoice_type': self.type_combo.currentData(),
             'warehouse': self.warehouse_combo.currentData(),
-            'invoice_date': self.date_edit.date().toString('yyyy-MM-dd'),
+            'invoice_date': invoice_date,
+            'transaction_currency': transaction_currency,
+            'fx_rate_date': invoice_date,
+            'usd_to_syp_old_snapshot': fx_old if fx_old > 0 else None,
+            'usd_to_syp_new_snapshot': fx_new if fx_new > 0 else None,
             'items': [
                 {
                     'product': item['product'],
                     'product_unit': item.get('product_unit'),  # Include product_unit for unit tracking
                     'quantity': item['quantity'],
-                    'unit_price': item['unit_price'],
+                    'unit_price': self._usd_to_transaction_amount(float(item['unit_price'])),
                     'tax_rate': global_tax_rate  # Respect global tax settings
                 }
                 for item in self.items
@@ -2425,7 +2503,7 @@ class InvoiceFormDialog(QDialog):
         discount_val = float(self.discount_spin.value()) if hasattr(self, 'discount_spin') else 0.0
         if mode == 'amount':
             data['discount_percent'] = 0
-            data['discount_amount'] = discount_val
+            data['discount_amount'] = self._usd_to_transaction_amount(discount_val)
         else:
             data['discount_percent'] = discount_val
             data['discount_amount'] = 0
@@ -2442,6 +2520,76 @@ class InvoiceFormDialog(QDialog):
             data['notes'] = notes
         
         return data
+
+    def _usd_to_transaction_amount(self, amount_usd: float) -> float:
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency == 'USD':
+            return float(amount_usd or 0)
+        if currency == 'SYP_NEW':
+            rate = float(self.usd_to_syp_new_snapshot.value() or 0)
+            return float(amount_usd or 0) * rate if rate > 0 else 0.0
+        if currency == 'SYP_OLD':
+            rate = float(self.usd_to_syp_old_snapshot.value() or 0)
+            return float(amount_usd or 0) * rate if rate > 0 else 0.0
+        return float(amount_usd or 0)
+
+    def _format_transaction_amount(self, amount: float) -> str:
+        currency = self.currency_combo.currentData() or 'USD'
+        if currency == 'USD':
+            return f"${float(amount or 0):,.2f}"
+        if currency == 'SYP_NEW':
+            return f"{float(amount or 0):,.2f} ل.س جديدة"
+        return f"{float(amount or 0):,.2f} ل.س"
+
+    def on_currency_changed(self, index: int):
+        self.transaction_currency = self.currency_combo.currentData() or 'USD'
+        if self.transaction_currency == 'USD':
+            self.paid_amount_spin.setSuffix(" $")
+        elif self.transaction_currency == 'SYP_NEW':
+            self.paid_amount_spin.setSuffix(" ل.س جديدة")
+        else:
+            self.paid_amount_spin.setSuffix(" ل.س")
+        self.usd_to_syp_new_snapshot.setEnabled(self.transaction_currency != 'USD')
+        self.usd_to_syp_old_snapshot.setEnabled(self.transaction_currency != 'USD')
+        self.load_fx_for_date()
+        self._refresh_summary_totals()
+
+    def on_fx_new_changed(self, value: float):
+        if self._fx_syncing:
+            return
+        self._fx_syncing = True
+        try:
+            self.usd_to_syp_old_snapshot.setValue(value * 100.0)
+        finally:
+            self._fx_syncing = False
+        self._refresh_summary_totals()
+
+    def on_fx_old_changed(self, value: float):
+        if self._fx_syncing:
+            return
+        self._fx_syncing = True
+        try:
+            self.usd_to_syp_new_snapshot.setValue(value / 100.0 if value else 0.0)
+        finally:
+            self._fx_syncing = False
+        self._refresh_summary_totals()
+
+    def load_fx_for_date(self, qdate=None):
+        if (self.currency_combo.currentData() or 'USD') == 'USD':
+            return
+        try:
+            rate_date = self.date_edit.date().toString('yyyy-MM-dd')
+            ctx = api.get_app_context(rate_date=rate_date, strict_fx=False)
+            fx = ctx.get('daily_fx') if isinstance(ctx, dict) else None
+            if fx:
+                self._fx_syncing = True
+                try:
+                    self.usd_to_syp_old_snapshot.setValue(float(fx.get('usd_to_syp_old') or 0))
+                    self.usd_to_syp_new_snapshot.setValue(float(fx.get('usd_to_syp_new') or 0))
+                finally:
+                    self._fx_syncing = False
+        except ApiException:
+            pass
     
     def save(self):
         """Emit saved signal with form data."""

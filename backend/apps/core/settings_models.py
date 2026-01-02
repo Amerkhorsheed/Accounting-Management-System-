@@ -143,6 +143,36 @@ class Currency(TimeStampedModel):
         return target_amount.quantize(Decimal(f'0.{"0" * to_currency.decimal_places}'))
 
 
+class DailyExchangeRate(TimeStampedModel):
+    rate_date = models.DateField(
+        unique=True,
+        verbose_name='تاريخ سعر الصرف'
+    )
+    usd_to_syp_old = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        verbose_name='سعر صرف الدولار مقابل الليرة القديمة'
+    )
+    usd_to_syp_new = models.DecimalField(
+        max_digits=18,
+        decimal_places=6,
+        verbose_name='سعر صرف الدولار مقابل الليرة الجديدة'
+    )
+    notes = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name='ملاحظات'
+    )
+
+    class Meta:
+        verbose_name = 'سعر صرف يومي'
+        verbose_name_plural = 'أسعار الصرف اليومية'
+        ordering = ['-rate_date']
+
+    def __str__(self):
+        return f"{self.rate_date}: USD→SYP(OLD)={self.usd_to_syp_old}, USD→SYP(NEW)={self.usd_to_syp_new}"
+
+
 class TaxRate(TimeStampedModel):
     """
     Tax rate configuration.

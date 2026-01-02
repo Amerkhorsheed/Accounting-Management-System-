@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QFont, QColor
 
-from ...config import Colors, Fonts
+from ...config import Colors, Fonts, config
 from ...widgets.cards import Card, StatCard
 from ...widgets.dialogs import MessageDialog
 from ...services.api import api, ApiException
@@ -270,14 +270,14 @@ class ReceivablesReportView(QWidget):
         Requirements: 4.1, 4.2
         """
         summary = self.report_data.get('summary', {})
-        total_outstanding = float(summary.get('total_outstanding', 0))
-        overdue_total = float(summary.get('total_overdue', 0))
+        total_outstanding = float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)
+        overdue_total = float(summary.get('total_overdue_usd', summary.get('total_overdue', 0)) or 0)
         customers_count = int(summary.get('customer_count', 0))
         unpaid_invoices = int(summary.get('total_unpaid_invoices', 0))
         partial_invoices = int(summary.get('total_partial_invoices', 0))
         
-        self.total_card.update_value(f"{total_outstanding:,.2f} ل.س")
-        self.overdue_card.update_value(f"{overdue_total:,.2f} ل.س")
+        self.total_card.update_value(config.format_usd(total_outstanding))
+        self.overdue_card.update_value(config.format_usd(overdue_total))
         self.customers_count_card.update_value(str(customers_count))
         self.invoices_count_card.update_value(str(unpaid_invoices + partial_invoices))
     
@@ -313,8 +313,8 @@ class ReceivablesReportView(QWidget):
             self.customers_table.setItem(row, 2, QTableWidgetItem(type_display))
             
             # Current balance
-            balance = float(customer.get('current_balance', 0))
-            balance_item = QTableWidgetItem(f"{balance:,.2f}")
+            balance = float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0)
+            balance_item = QTableWidgetItem(config.format_usd(balance))
             balance_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             # Color code based on credit status
             credit_limit = float(customer.get('credit_limit', 0))
@@ -325,16 +325,17 @@ class ReceivablesReportView(QWidget):
             self.customers_table.setItem(row, 3, balance_item)
             
             # Credit limit
+            credit_limit_usd = float(customer.get('credit_limit_usd', 0) or 0)
             credit_limit_item = QTableWidgetItem(
-                f"{credit_limit:,.2f}" if credit_limit > 0 else "غير محدد"
+                config.format_usd(credit_limit_usd) if credit_limit > 0 else "غير محدد"
             )
             credit_limit_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.customers_table.setItem(row, 4, credit_limit_item)
             
             # Available credit
-            available = float(customer.get('available_credit', 0))
+            available = float(customer.get('available_credit_usd', customer.get('available_credit', 0)) or 0)
             available_item = QTableWidgetItem(
-                f"{available:,.2f}" if credit_limit > 0 else "-"
+                config.format_usd(available) if credit_limit > 0 else "-"
             )
             available_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if credit_limit > 0:
@@ -406,7 +407,7 @@ class ReceivablesReportView(QWidget):
                     'code': customer.get('code', ''),
                     'name': customer.get('name', ''),
                     'customer_type_display': type_display,
-                    'current_balance': float(customer.get('current_balance', 0)),
+                    'current_balance': float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0),
                     'credit_limit': float(customer.get('credit_limit', 0)),
                     'available_credit': float(customer.get('available_credit', 0)),
                     'unpaid_invoice_count': int(customer.get('unpaid_invoice_count', 0)),
@@ -419,8 +420,8 @@ class ReceivablesReportView(QWidget):
             # Prepare summary data
             summary = self.report_data.get('summary', {})
             summary_data = {
-                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
-                'المبالغ المتأخرة': f"{float(summary.get('total_overdue', 0)):,.2f} ل.س",
+                'إجمالي المستحقات': config.format_usd(float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)),
+                'المبالغ المتأخرة': config.format_usd(float(summary.get('total_overdue_usd', summary.get('total_overdue', 0)) or 0)),
                 'عدد العملاء': str(summary.get('customer_count', 0))
             }
             
@@ -478,7 +479,7 @@ class ReceivablesReportView(QWidget):
                     'code': customer.get('code', ''),
                     'name': customer.get('name', ''),
                     'customer_type_display': type_display,
-                    'current_balance': float(customer.get('current_balance', 0)),
+                    'current_balance': float(customer.get('current_balance_usd', customer.get('current_balance', 0)) or 0),
                     'credit_limit': float(customer.get('credit_limit', 0)),
                     'available_credit': float(customer.get('available_credit', 0)),
                     'unpaid_invoice_count': int(customer.get('unpaid_invoice_count', 0))
@@ -490,8 +491,8 @@ class ReceivablesReportView(QWidget):
             # Prepare summary data
             summary = self.report_data.get('summary', {})
             summary_data = {
-                'إجمالي المستحقات': f"{float(summary.get('total_outstanding', 0)):,.2f} ل.س",
-                'المبالغ المتأخرة': f"{float(summary.get('total_overdue', 0)):,.2f} ل.س",
+                'إجمالي المستحقات': config.format_usd(float(summary.get('total_outstanding_usd', summary.get('total_outstanding', 0)) or 0)),
+                'المبالغ المتأخرة': config.format_usd(float(summary.get('total_overdue_usd', summary.get('total_overdue', 0)) or 0)),
                 'عدد العملاء': str(summary.get('customer_count', 0))
             }
             
